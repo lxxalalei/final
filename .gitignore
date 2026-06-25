@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.zip
+*.pyo
+.tmp/
+
+# ── 敏感配置文件 ──────────────────────────────────
+# settings.yaml 可能包含本地 Cookie 路径等敏感信息
+# 示例文件 settings.example.yaml 可安全提交
+config/settings.yaml
+
+# 各平台凭证文件
+platforms/*/config/credentials.json
+
+# 下载输出和日志
+downloads/
+logs/
+
+# WorkBuddy 工作区文件
+.workbuddy/
+
+# 打包产物
+*.zip

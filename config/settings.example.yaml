@@ -1,0 +1,159 @@
+# ═══════════════════════════════════════════════════════════════
+#  儿童学习资源 Skill 套件 — 示例配置文件
+# ═══════════════════════════════════════════════════════════════
+#
+#  复制本文件为 settings.yaml，然后根据实际环境修改：
+#    cp config/settings.example.yaml config/settings.yaml
+#
+#  本文件不含任何敏感信息，可安全提交到版本库。
+#  settings.yaml 已被 .gitignore 忽略，可安全存放本地配置。
+#
+#  环境变量覆盖规则：
+#    前缀 LRS_，嵌套层级用双下划线 __ 分隔。
+#    例：LRS_LOG__LEVEL=DEBUG → log.level
+#        LRS_PLATFORMS__BILIBILI__MIN_REQUEST_INTERVAL=2.0
+# ═══════════════════════════════════════════════════════════════
+
+
+# ── 全局默认值（各平台未单独配置时回退到此） ──────────────────────
+defaults:
+  min_request_interval: 1.0        # 请求间隔（秒）
+  request_timeout: 120             # 请求超时（秒）
+  download_timeout: 600            # 下载超时（秒）
+  retry_count: 2                   # 重试次数（0=不重试）
+  retry_backoff_base: 2.0          # 重试退避基数（秒）
+  circuit_breaker_failure_threshold: 5    # 断路器熔断阈值
+  circuit_breaker_recovery_timeout: 300   # 断路器冷却时间（秒）
+  enable_rate_limit: true          # 启用速率限制
+  enable_circuit_breaker: true     # 启用断路器
+
+
+# ── 平台专属配置（覆盖 defaults） ────────────────────────────────
+#  未列出的字段继承 defaults。完整平台列表见 shared/config/platform-mapping.md。
+platforms:
+
+  bilibili:
+    min_request_interval: 1.5
+    request_timeout: 120
+    download_timeout: 600
+    retry_count: 2
+
+  smartedu:
+    min_request_interval: 2.0
+    request_timeout: 60
+    download_timeout: 900
+    retry_count: 3
+
+  zhihu:
+    min_request_interval: 1.0
+    request_timeout: 90
+    download_timeout: 300
+    retry_count: 2
+
+  douyin:
+    min_request_interval: 1.5
+    request_timeout: 120
+    download_timeout: 600
+    retry_count: 2
+
+  weibo:
+    min_request_interval: 1.0
+    request_timeout: 90
+    download_timeout: 300
+    retry_count: 2
+
+  # 新增平台按此模板添加：
+  # ximalaya:
+  #   min_request_interval: 1.5
+  #   request_timeout: 90
+  #   download_timeout: 600
+  #   retry_count: 2
+
+
+# ── 下载设置 ────────────────────────────────────────────────────
+download:
+  output_dir: ./downloads          # 下载保存目录
+  temp_dir: ""                     # 临时目录（空=系统临时目录）
+  max_concurrent: 3                # 并发下载数
+  max_file_size_mb: 0              # 单文件大小上限（0=无限制）
+  keep_partial_on_failure: false   # 下载失败是否保留部分文件
+
+
+# ── 日志设置 ────────────────────────────────────────────────────
+#  详细规范见 shared/logging-convention.md
+log:
+  level: INFO                      # DEBUG / INFO / WARNING / ERROR / CRITICAL
+  output: stderr                   # stderr / file / both
+  file_path: ./logs/lrs.log        # 日志文件路径
+  max_size_mb: 10                  # 按大小轮转：单文件最大大小（MB）
+  backup_count: 5                  # 保留的轮转文件份数
+  rotate_by: size                  # size（按大小）/ time（按日期）
+  rotate_when: midnight            # 按日期轮转：midnight / h / d（rotate_by=time 时生效）
+  format: "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+  datefmt: "%Y-%m-%d %H:%M:%S"
+
+
+# ── 搜索设置 ────────────────────────────────────────────────────
+search:
+  default_max_results: 20          # 单平台默认最大返回数
+  max_results_per_platform: 50     # 多平台并行时上限
+  dedup_enabled: true              # 是否启用跨平台去重
+  search_timeout: 120              # 搜索超时（秒）
+
+
+# ── 去重设置（归档入库前 + 资料库整理） ─────────────────────────
+#  去重引擎实现：shared/dedup.py（DedupEngine）
+#  策略文档：library-manager/SKILL.md → 跨平台内容级去重
+dedup:
+  enabled: true                          # 总开关
+
+  # 检测到重复后的处理策略：
+  #   keep_best_quality  — 保留质量等级最高的版本（默认）
+  #   keep_earliest      — 保留最早获取/归档的版本
+  #   keep_latest        — 保留最新获取的版本
+  #   mark_and_keep_all  — 全部保留，标记 is_duplicate: true
+  strategy: keep_best_quality
+
+  # ── 策略一：内容指纹去重（精确） ──
+  enable_content_fingerprint: true       # 启用内容指纹
+  hash_algorithm: md5                    # md5 / sha256
+
+  # ── 策略二：URL 结构化去重 ──
+  enable_url_dedup: true                 # 启用 URL 去重
+  url_normalize_ignore_params: true      # 标准化时忽略追踪参数
+
+  # 追踪参数列表（这些参数在 URL 比较时被去除）
+  url_tracking_params:
+    - utm_source
+    - utm_medium
+    - utm_campaign
+    - utm_term
+    - utm_content
+    - spm
+    - share_source
+    - share_medium
+    - share_token
+    - bbid
+    - from
+    - isBdtf
+    - refer
+    - ref
+    - source
+    - timestamp
+    - sign
+    - ts
+
+  # ── 策略三：标题相似度去重（近似） ──
+  enable_title_similarity: true          # 启用标题相似度检测
+  title_similarity_threshold: 0.85       # 相似度阈值（0-1），越高越严格
+  title_min_length_for_similarity: 4     # 最短标题长度（过短不检测）
+  use_tfidf: true                        # 使用 TF-IDF 辅助（默认 true）
+
+
+# ── 凭证设置 ────────────────────────────────────────────────────
+#  敏感凭证（Cookie/Token）请勿写在此文件中！
+#  推荐通过环境变量传递：BILIBILI_COOKIE=xxx
+#  或使用各平台 config/credentials.json（已在 .gitignore 中忽略）。
+credentials:
+  config_dir: ./platforms
+  allow_env_override: true
