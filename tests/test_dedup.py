@@ -17,10 +17,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-# 确保能导入 shared 模块
+# 确保能导入 shared 模块（shared .py 已迁移至 resource-platforms/scripts/shared/）
 _project_root = Path(__file__).resolve().parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+_scripts_dir = _project_root / "resource-platforms" / "scripts"
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
 
 from shared.dedup import (
     DedupConfig,

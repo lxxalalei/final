@@ -115,3 +115,60 @@ description: 儿童学习资源需求理解与查询生成 Skill，负责将用�
 - ✅ 用户明确：列出用户明确说过的信息
 - 💡 默认假设：列出模型自动补全的假设（如果不对可以调整）
 ```
+
+---
+
+## 写入文件
+
+### 1. 获取任务路径
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、输出文件名（通常 `stage1_intent.json`）
+- 本阶段无上游文件
+
+### 2. 分析需求并生成查询
+- 阅读用户原始需求
+- 生成分级查询列表（core/official/format/longtail）
+- 做出的默认假设写入 `assumptions`
+
+### 3. 写入结果文件
+
+将以下结构写入 `{session_dir}/stage1_intent.json`：
+
+```json
+{
+  "_meta": {
+    "stage": 1,
+    "session_id": "{session_id}",
+    "skill": "resource-intent",
+    "created_at": "ISO时间",
+    "input_from": null
+  },
+  "_summary": {
+    "core_topic": "核心主题",
+    "query_count": 3,
+    "target_age": "8-9岁",
+    "search_mode": "standard"
+  },
+  "data": {
+    "summary": "一句话需求总结",
+    "core_topic": "核心主题",
+    "queries": [
+      {"text": "查询关键词", "tier": "core/official/format/longtail", "format_hint": "视频/音频/文档/图文"}
+    ],
+    "target_age": "目标年龄范围",
+    "grade_level": "年级",
+    "difficulty": "入门/进阶/系统",
+    "format_preferences": ["视频", "文档"],
+    "source_preference": "不限/官方优先/视频平台优先",
+    "search_mode": "standard / exhaustive",
+    "assumptions": ["假设1", "假设2"]
+  }
+}
+```
+
+- `_summary`（flow 读这个）：核心主题、查询数量、目标年龄、搜索模式
+- `data`（下游 search 读这个）：需求总结、核心主题、查询列表、年龄/年级/难度、偏好、假设清单
+
+### 4. 完成后
+
+- 提示 flow 调用 `resource-search` 继续执行
+- 只返回 `_summary`，不在上下文中展开完整 data

@@ -155,3 +155,18 @@ resource-intent  →  resource-search  →  resource-selector  →  resource-dow
 新增字段必须可选，旧字段不删除不改变语义。规范版本变更时同步更新本契约和 schema。
 
 ---
+
+## 文件持久化包装（Session I/O）
+
+各阶段输出不再直接放入模型上下文，而是写入文件系统。
+每个阶段文件包含三层包装：
+
+| 层级 | 内容 | 谁读 |
+|------|------|------|
+| `_meta` | 元数据（stage / session_id / created_at / input_from） | 调试/审计 |
+| `_summary` | 摘要（≤50字，关键指标） | flow 调度决策、展示给用户 |
+| `data` | 完整业务数据（遵循上述各阶段契约） | 下游 Skill 处理 |
+
+完整读写规范见 `session-io-spec.md`。
+
+---

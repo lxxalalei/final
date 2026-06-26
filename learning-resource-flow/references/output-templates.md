@@ -98,6 +98,8 @@
 {thumbnail_line}
 ```
 
+> `{thumbnail_line}` 定义：当资源有封面图时输出 `🖼️ {thumbnail_url}`，无封面图时省略此行。
+
 **等级标识映射**（取自 quality-rubric.md）：
 
 | quality_level | 显示 | 星级标识 |
@@ -216,6 +218,10 @@
    ████████████████░░░░░░░░░░░░  55%
    27.5 MB / 50.0 MB  ·  2.0 MB/s  ·  约11秒
 ```
+
+> 注：模板 B 的 `summary.completed` 对应模板 D 的 `download_statistics.success_count`。
+> 任务状态映射：`completed` → `success`，`downloading/queued/paused` → 不计入 D，
+> `failed` → `failed`（需在该任务的 `result` 中填充 `download_status: "failed"`）。
 
 ### B.2 单任务 Markdown 模板（可复用）
 
@@ -460,6 +466,9 @@
       {file_basename}
 ```
 
+> `{fallback_line}` 定义：当 failed 资源有降级保存内容时输出 `📦 已保存：标题 + 简介 + 来源链接 · Level 3`，无降级内容时省略此行。
+> `{thumbnail_line}` 定义（模板 A）：当资源有封面图时输出 `🖼️ {thumbnail_url}`，无封面图时省略此行。
+
 **星级标识映射**（与模板 A 一致）：
 
 | quality_level | 星级标识 |
@@ -484,13 +493,13 @@
 {
   "phase": "archive",
   "template": "archive_status",
-  "total_count": 5,
+  "total_count": 4,
   "summary": {
     "success_count": 1,
     "degraded_count": 1,
     "failed_count": 1,
     "deduplicated_count": 1,
-    "skipped_count": 1
+    "skipped_count": 0
   },
   "resources": [
     {
@@ -557,10 +566,10 @@
 📥 下载统计
 ─────────────────────────────────────
 • ✅ 完整下载：1个（256.0 MB）
-• ⚠️ 降级获取：2个（1个摘要 + 1个链接收藏）
+• ⚠️ 降级获取：1个（摘要版）
 • ❌ 下载失败：1个（反爬拦截）
 • 🔀 去重跳过：1个（与已有资源重复）
-• 合计处理：5个 · 实际入库：3个
+• 合计处理：4个 · 实际入库：2个
 
 📁 入库资源清单
 ─────────────────────────────────────
@@ -579,7 +588,7 @@
 ❌ 失败降级（1个）
   3. 数学纪录片：数学的故事
      → 数学/小学三年级/数学故事/B站-数学的故事_链接收藏.md
-     2.0 KB · Markdown · ⭐ A级
+     2.0 KB · Markdown · A级
      Level 3 来源链接（被反爬拦截）
      可稍后重试或手动访问：
         https://www.bilibili.com/video/BV6xx411c2mD
@@ -592,7 +601,7 @@
 📊 质量分布（入库资源）
 ─────────────────────────────────────
 • ⭐ S级：0个
-• ⭐ A级：2个
+• ⭐ A级：1个
 • B级：1个
 • C级：0个
 
@@ -645,9 +654,9 @@
     "search_summary": "查询4组关键词，覆盖5个平台，召回58条，初筛过滤36条，最终保留22条候选"
   },
   "download_statistics": {
-    "total_count": 5,
+    "total_count": 4,
     "success_count": 1,
-    "degraded_count": 2,
+    "degraded_count": 1,
     "failed_count": 1,
     "deduplicated_count": 1,
     "total_downloaded_bytes": 268459008,
@@ -655,14 +664,14 @@
     "retry_count": 4
   },
   "archive_statistics": {
-    "archived_count": 3,
+    "archived_count": 2,
     "skipped_count": 1,
     "failed_count": 1,
     "library_base_path": "学习资料库/"
   },
   "quality_distribution": {
     "S": 0,
-    "A": 2,
+    "A": 1,
     "B": 1,
     "C": 0
   },

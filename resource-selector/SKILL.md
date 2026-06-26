@@ -371,12 +371,73 @@ description: 儿童学习资源候选展示与用户选择 Skill，负责将搜�
 
 ---
 
+## 读写文件
+
+### 1. 获取任务路径
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage2_search.json`）、输出文件名（通常 `stage3_select.json`）
+
+### 2. 读取上游数据
+- 读取 `{session_dir}/stage2_search.json` 的 `data` 部分
+- 提取候选资源列表用于展示给用户
+
+### 3. 用户选择后写入结果
+
+用户确认选择后，将以下结构写入 `{session_dir}/stage3_select.json`：
+
+```json
+{
+  "_meta": {
+    "stage": 3,
+    "session_id": "{session_id}",
+    "skill": "resource-selector",
+    "created_at": "ISO时间",
+    "input_from": "stage2_search.json"
+  },
+  "_summary": {
+    "selected_count": 5,
+    "selection_mode": "manual",
+    "by_platform": {"bilibili": 2, "ximalaya": 3}
+  },
+  "data": {
+    "selected_count": 5,
+    "selection_mode": "manual / all / by_type / by_quality",
+    "resources": [
+      {
+        "// 说明": "保留 stage2 中该资源的全部字段",
+        "resource_id": "...",
+        "title": "...",
+        "type": "...",
+        "subject": "...",
+        "platform": "...",
+        "source_url": "...",
+        "source_name": "...",
+        "quality_level": "...",
+        "download_feasibility": "...",
+        "...": "（stage2 的所有字段原样保留）"
+      }
+    ]
+  }
+}
+```
+
+- `_summary`（flow 读这个）：选中数量、选择方式、平台分布
+- `data`（下游 downloader 读这个）：用户选中的资源列表
+- **保留规则**：只做筛选不做裁剪，保留的每个资源要带过来上游的全部字段，一个字段都不能删
+
+### 4. 完成后
+
+- 提示 flow 调用 `resource-downloader` 继续执行
+- 只返回 `_summary`，不在上下文中展开完整 data
+
+---
+
 ## 参考资料
 
 - `references/display-templates.md` - 展示模板详细说明
 - `references/quality-rubric.md` - 质量等级评估标准
 - `../shared/schemas/resource-schema.md` - 资源元数据规范
 - `../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
+- `../shared/schemas/session-io-spec.md` - 会话上下文读写规范
 - `../shared/config/platform-mapping.md` - 平台-Skill 映射表
 
 ---

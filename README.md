@@ -88,30 +88,38 @@ learning-resource-suite/
 │   └── references/
 │       └── library-structure.md
 │
-├── platforms/                       # 🟠 平台执行层 — 各平台专属 Skill
-│   ├── bilibili/                     # B站（搜索+下载+字幕+WBI签名）
-│   │   ├── SKILL.md
-│   │   └── scripts/
-│   ├── smartedu/                     # 国家中小学智慧教育平台
-│   │   ├── SKILL.md
-│   │   ├── references/               # 样本数据 + 资源schema
-│   │   └── scripts/
-│   ├── zhihu/                        # 知乎（搜索+Markdown导出）
-│   │   ├── SKILL.md
-│   │   └── scripts/
-│   ├── douyin/                       # 抖音（f2引擎搜索+无水印下载）
-│   │   ├── SKILL.md
-│   │   └── scripts/
-│   └── weibo/                        # 微博（ajax搜索+用户图文下载）
-│       ├── SKILL.md
-│       └── scripts/
+├── resource-platforms/              # 🟠 平台执行层 — 所有平台 Skill 的统一 Skill 包
+│   ├── SKILL.md                      # 平台总入口（路由 + 共享规范）
+│   ├── references/                   # 各平台 SKILL 说明 + 架构文档
+│   │   ├── bilibili.md               # B站（搜索+下载+字幕+WBI签名）
+│   │   ├── smartedu.md               # 国家中小学智慧教育平台
+│   │   ├── zhihu.md                  # 知乎（搜索+Markdown导出）
+│   │   ├── douyin.md                 # 抖音（f2引擎搜索+无水印下载）
+│   │   ├── weibo.md                  # 微博（ajax搜索+用户图文下载）
+│   │   ├── ximalaya.md               # 喜马拉雅（搜索）
+│   │   ├── open163.md                # 网易公开课（搜索）
+│   │   ├── architecture.md           # smartedu 架构说明
+│   │   ├── smartedu-resource-schema.md
+│   │   └── test-cases.md
+│   └── scripts/                      # 各平台脚本 + 共享代码
+│       ├── bilibili/                 # adapter + 下载脚本
+│       ├── smartedu/
+│       ├── zhihu/
+│       ├── douyin/
+│       ├── weibo/
+│       ├── ximalaya/
+│       ├── open163/
+│       └── shared/                   # 共享 Python 模块（已从 shared/ 迁入）
+│           ├── __init__.py
+│           ├── platform_base.py      # 平台 Skill 基类（输出标准化层）
+│           ├── utils.py              # 通用工具函数
+│           ├── logger.py             # 统一日志模块
+│           ├── wbi_sign.py           # B站 WBI 签名工具
+│           ├── config_loader.py      # 统一配置加载器
+│           └── dedup.py              # 跨平台内容级去重引擎
 │
-├── shared/                          # ⚙️ 共享规范与工具
-│   ├── __init__.py
-│   ├── platform_base.py              # 平台 Skill 基类（输出标准化层）
-│   ├── utils.py                      # 通用工具函数
-│   ├── logger.py                     # 统一日志模块
-│   ├── wbi_sign.py                   # B站 WBI 签名工具
+├── shared/                          # ⚙️ 共享规范与配置（.md 文档，无 .py）
+│   ├── logging-convention.md         # 日志规范
 │   ├── schemas/                      # 数据契约与规范
 │   │   ├── resource-schema.md
 │   │   ├── error-codes.md
@@ -143,10 +151,12 @@ learning-resource-suite/
 | `schemas/platform-download-contract.md` | 平台下载接口契约 —— downloader 调度器 ↔ platform skill 下载接口 |
 | `config/platform-mapping.md` | 平台-Skill 映射表 —— 路由判断的核心依据 |
 | `config/platform-advantages.md` | 平台优势图谱 —— 全系统权威配置，指导平台路由选择 |
-| `platform_base.py` | 平台 Skill 基类（CLIBasedPlatformSkill）—— 含输出标准化层 |
-| `utils.py` | 通用工具函数 |
-| `logger.py` | 统一日志模块 —— 各平台脚本获取带平台前缀的 logger |
-| `wbi_sign.py` | B站 WBI 签名工具 —— 搜索 API 鉴权算法 |
+| `platform_base.py` | 平台 Skill 基类（CLIBasedPlatformSkill）—— 已迁至 `resource-platforms/scripts/shared/` |
+| `utils.py` | 通用工具函数 —— 已迁至 `resource-platforms/scripts/shared/` |
+| `logger.py` | 统一日志模块 —— 已迁至 `resource-platforms/scripts/shared/` |
+| `wbi_sign.py` | B站 WBI 签名工具 —— 已迁至 `resource-platforms/scripts/shared/` |
+| `config_loader.py` | 统一配置加载器 —— 已迁至 `resource-platforms/scripts/shared/` |
+| `dedup.py` | 跨平台内容级去重引擎 —— 已迁至 `resource-platforms/scripts/shared/` |
 
 ---
 
@@ -163,15 +173,19 @@ learning-resource-suite/
 | `resource-downloader` | 业务能力层 | 下载调度：分级调度 + 重试降级 + 错误处理 |
 | `library-manager` | 业务能力层 | 资料库管理：归档 + 索引维护 + 检索复用 |
 
-### 平台 Skill（5个）
+### 平台 Skill（7个，合并为 1 个 Skill 包）
+
+> 以下 7 个平台已合并为 `resource-platforms` 一个 Skill 包，统一管理。
 
 | 平台 | 优先级 | 能力 | 说明 |
 |------|--------|------|------|
 | `bilibili` | P0 | 搜索 + 下载 + 字幕 | B站视频，集成 bilibili-api-python，WBI签名鉴权 |
-| `smartedu` | P1 | 全资源下载 | 国家中小学智慧教育平台，支持 PDF/m3u8/音频/图片 |
+| `ximalaya` | P0 | 搜索（下载待实现） | 喜马拉雅音频，OAuth 开放平台 API |
+| `smartedu` | P1 | 搜索 + 下载 | 国家中小学智慧教育平台，支持 PDF/m3u8/音频/图片 |
 | `zhihu` | P2 | 搜索 + 内容导出 | 知乎问答与文章，导出 Markdown |
 | `douyin` | P2 | 搜索 + 无水印下载 | 抖音短视频，f2引擎驱动 |
 | `weibo` | P2 | 搜索 + 用户图文下载 | 微博 ajax搜索 + 用户图文 |
+| `open163` | P2 | 搜索（下载待实现） | 网易公开课，HTML 解析 |
 
 ---
 
@@ -198,6 +212,6 @@ learning-resource-suite/
 - **download_status** 统一三态：`success` / `degraded` / `failed`
 - **降级计数** 字段用 `degraded_count`，降级等级用字符串 `"Level 0"` ~ `"Level 3"`
 - **错误码** 必须使用 `error-codes.md` 中的标准命名（如 `CONTENT_PREMIUM_ONLY`、`CONTENT_NOT_FOUND`）
-- **平台 Skill 路径** 统一写 `platforms/xxx`（不写 `platform-xxx`）
+- **平台 Skill 路径** 统一写 `resource-platforms/scripts/xxx`（平台脚本）或 `resource-platforms/references/xxx.md`（平台 SKILL 说明），不写 `platforms/xxx`
 - **平台优势图谱** 全系统权威位置为 `shared/config/platform-advantages.md`
 - **新建平台 Skill** 一律基于 `_templates/platform-skill-template.md`，必须含搜索/下载/反爬/登录四大模块

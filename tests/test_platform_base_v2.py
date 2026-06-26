@@ -18,9 +18,10 @@ import json
 import tempfile
 from pathlib import Path
 
-# 确保能导入 shared
+# 确保能导入 shared（shared .py 已迁移至 resource-platforms/scripts/shared/）
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+SCRIPTS_DIR = ROOT / "resource-platforms" / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 from shared.platform_base import (
     RateLimiter,

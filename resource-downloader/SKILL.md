@@ -107,13 +107,13 @@ description: 儿童学习资源下载调度器 Skill，负责根据资源平台�
 
 | 平台 | Skill 路径 | Skill 状态 | 说明 |
 |------|-----------|-----------|------|
-| bilibili | `platforms/bilibili` | ✅ 可用 | B站专属，搜索+下载+反爬 |
-| ximalaya | `platform-ximalaya` | 规划中 | 喜马拉雅专属，音频下载 |
-| smartedu | `platforms/smartedu` | ✅ 可用 | 国家中小学智慧教育平台 |
+| bilibili | `../resource-platforms/references/bilibili.md` | ✅ 可用 | B站专属，搜索+下载+反爬 |
+| ximalaya | `../resource-platforms/references/ximalaya.md` | ✅ 可用（搜索） | 喜马拉雅专属，音频下载 |
+| smartedu | `../resource-platforms/references/smartedu.md` | ✅ 可用 | 国家中小学智慧教育平台 |
 | baiduwenku | `platform-baiduwenku` | 规划中 | 百度文库文档下载 |
-| zhihu | `platforms/zhihu` | ✅ 可用 | 知乎图文提取 |
-| douyin | `platforms/douyin` | ✅ 可用 | 抖音专属，f2引擎搜索+无水印下载 |
-| weibo | `platforms/weibo` | ✅ 可用 | 微博专属，ajax搜索+用户图文下载 |
+| zhihu | `../resource-platforms/references/zhihu.md` | ✅ 可用 | 知乎图文提取 |
+| douyin | `../resource-platforms/references/douyin.md` | ✅ 可用 | 抖音专属，f2引擎搜索+无水印下载 |
+| weibo | `../resource-platforms/references/weibo.md` | ✅ 可用 | 微博专属，ajax搜索+用户图文下载 |
 
 > 注：标记「✅ 可用」的平台已接入，优先走平台专属通道；其余走通用兜底通道。
 
@@ -404,12 +404,84 @@ Level 3：保存标题 + 链接 + 摘要
 
 ---
 
+## 读写文件
+
+### 1. 获取任务路径
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage3_select.json`）、输出文件名（通常 `stage4_download.json`）
+
+### 2. 读取上游数据
+- 读取 `{session_dir}/stage3_select.json` 的 `data` 部分
+- 提取用户选中的资源列表
+
+### 3. 执行下载并写入结果
+
+下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将以下结构写入 `{session_dir}/stage4_download.json`：
+
+```json
+{
+  "_meta": {
+    "stage": 4,
+    "session_id": "{session_id}",
+    "skill": "resource-downloader",
+    "created_at": "ISO时间",
+    "input_from": "stage3_select.json"
+  },
+  "_summary": {
+    "total_count": 5,
+    "success_count": 3,
+    "degraded_count": 1,
+    "failed_count": 1
+  },
+  "data": {
+    "total_count": 5,
+    "success_count": 3,
+    "degraded_count": 1,
+    "failed_count": 1,
+    "resources": [
+      {
+        "// 说明": "保留 stage3 全部字段 + 新增下载结果字段",
+        "resource_id": "...",
+        "title": "...",
+        "platform": "...",
+        "source_url": "...",
+        "...": "（stage3 的所有字段原样保留）",
+
+        "download_status": "success / degraded / failed",
+        "degraded_level": "Level 0 / Level 1 / Level 2 / Level 3",
+        "file_path": "{session_dir}/downloads/xxx.mp4",
+        "file_size": 156000000,
+        "fetch_time": "2026-06-26T15:00:00+08:00",
+        "fetch_method": "获取方式说明",
+
+        "// 失败/降级时额外字段": "",
+        "error_code": "NETWORK_TIMEOUT / CONTENT_PREMIUM_ONLY / ...",
+        "error_message": "错误信息",
+        "degraded_content": "降级内容说明",
+        "alternative_recommendations": []
+      }
+    ]
+  }
+}
+```
+
+- `_summary`（flow 读这个）：总数、成功/降级/失败各多少
+- `data`（下游 library 读这个）：每个资源在上游字段基础上新增——`download_status`（success/degraded/failed）、`degraded_level`（Level 0-3）、`file_path`（本地路径）、`file_size`（字节）、`fetch_time`、`fetch_method`、失败时附加 `error_code`/`error_message`、降级时附加 `degraded_content`、失败时附加 `alternative_recommendations`
+- **保留规则**：上游全部字段原样带过来；`failed` 的资源也要写进文件
+
+### 4. 完成后
+
+- 提示 flow 调用 `library-manager` 继续执行
+- 只返回 `_summary`，不在上下文中展开完整 data
+
+---
+
 ## 参考资料
 
-- `references/download-methods.md` - 通用下载工具使用说明（兜底方案）
+- `../resource-platforms/references/download-methods.md` - 通用下载工具使用说明（兜底方案）
 - `../shared/schemas/resource-schema.md` - 资源元数据规范
 - `../shared/schemas/error-codes.md` - 统一错误码体系
 - `../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
+- `../shared/schemas/session-io-spec.md` - 会话上下文读写规范
 - `../shared/config/platform-mapping.md` - 平台-Skill 映射表
 
 ---

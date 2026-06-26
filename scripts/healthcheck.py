@@ -44,7 +44,10 @@ CRITICAL_DIRS = [
     "shared",
     "shared/schemas",
     "shared/config",
-    "platforms",
+    "resource-platforms",
+    "resource-platforms/scripts",
+    "resource-platforms/scripts/shared",
+    "resource-platforms/references",
     "config",
     "_templates",
     "tests",
@@ -62,13 +65,13 @@ CRITICAL_FILES = [
     # config
     "shared/config/platform-mapping.md",
     "shared/config/platform-advantages.md",
-    # shared modules
-    "shared/__init__.py",
-    "shared/platform_base.py",
-    "shared/utils.py",
-    "shared/logger.py",
-    "shared/wbi_sign.py",
-    "shared/config_loader.py",
+    # shared modules（已迁移至 resource-platforms/scripts/shared/）
+    "resource-platforms/scripts/shared/__init__.py",
+    "resource-platforms/scripts/shared/platform_base.py",
+    "resource-platforms/scripts/shared/utils.py",
+    "resource-platforms/scripts/shared/logger.py",
+    "resource-platforms/scripts/shared/wbi_sign.py",
+    "resource-platforms/scripts/shared/config_loader.py",
     # config files
     "config/settings.example.yaml",
     # templates
@@ -97,11 +100,12 @@ SKILL_MD_FILES = [
     "resource-selector/SKILL.md",
     "resource-downloader/SKILL.md",
     "library-manager/SKILL.md",
-    "platforms/bilibili/SKILL.md",
-    "platforms/smartedu/SKILL.md",
-    "platforms/zhihu/SKILL.md",
-    "platforms/douyin/SKILL.md",
-    "platforms/weibo/SKILL.md",
+    "resource-platforms/SKILL.md",
+    "resource-platforms/references/bilibili.md",
+    "resource-platforms/references/smartedu.md",
+    "resource-platforms/references/zhihu.md",
+    "resource-platforms/references/douyin.md",
+    "resource-platforms/references/weibo.md",
 ]
 
 # ════════════════════════════════════════════════════════════════
@@ -218,7 +222,10 @@ def check_python_imports(skip_deps: bool = False) -> list[CheckResult]:
     """
     results = []
 
-    # 确保项目根在 sys.path
+    # 确保项目根在 sys.path（shared .py 已迁移至 resource-platforms/scripts/）
+    scripts_dir = str(PROJECT_ROOT / "resource-platforms" / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
     root_str = str(PROJECT_ROOT)
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
@@ -228,11 +235,11 @@ def check_python_imports(skip_deps: bool = False) -> list[CheckResult]:
 
     # 1) AST 静态分析：检查 import 语句
     shared_py_files = {
-        "shared/platform_base.py": "shared.platform_base",
-        "shared/utils.py": "shared.utils",
-        "shared/logger.py": "shared.logger",
-        "shared/wbi_sign.py": "shared.wbi_sign",
-        "shared/config_loader.py": "shared.config_loader",
+        "resource-platforms/scripts/shared/platform_base.py": "shared.platform_base",
+        "resource-platforms/scripts/shared/utils.py": "shared.utils",
+        "resource-platforms/scripts/shared/logger.py": "shared.logger",
+        "resource-platforms/scripts/shared/wbi_sign.py": "shared.wbi_sign",
+        "resource-platforms/scripts/shared/config_loader.py": "shared.config_loader",
     }
 
     third_party_deps = set()
@@ -330,12 +337,12 @@ def check_platform_mapping() -> list[CheckResult]:
 
     text = mapping_file.read_text(encoding="utf-8")
 
-    # 解析映射表中的行：| `platform_id` | ... | `platforms/xxx` | ✅ 可用 | ...
+    # 解析映射表中的行：| `platform_id` | ... | `resource-platforms/scripts/xxx` | ✅ 可用 | ...
     # 提取平台标识和状态
     table_row = re.compile(
         r"\|\s*`([a-z_]+)`\s*\|"     # 平台标识
         r"[^|]*\|"                      # 平台名称
-        r"\s*`?(platforms/[a-z_]+)`?\s*\|"  # Skill 路径
+        r"\s*`?(resource-platforms/scripts/[a-z_]+)`?\s*\|"  # Skill 路径
         r"\s*(✅\s*可用|规划中|开发中|不可用)\s*\|"  # 状态
     )
 
@@ -355,7 +362,7 @@ def check_platform_mapping() -> list[CheckResult]:
     # 检查"可用"平台
     for platform_id, skill_path in active_platforms:
         platform_dir = _p(skill_path)
-        skill_md = platform_dir / "SKILL.md"
+        skill_md = _p(f"resource-platforms/references/{platform_id}.md")
 
         if not platform_dir.is_dir():
             results.append(CheckResult(
@@ -365,7 +372,7 @@ def check_platform_mapping() -> list[CheckResult]:
         elif not skill_md.is_file():
             results.append(CheckResult(
                 f"平台映射 {platform_id}", "FAIL",
-                f"SKILL.md 不存在: {skill_path}/SKILL.md"
+                f"SKILL.md 不存在: resource-platforms/references/{platform_id}.md"
             ))
         else:
             results.append(CheckResult(
@@ -386,25 +393,25 @@ def check_platform_mapping() -> list[CheckResult]:
                 f"目录已存在: {skill_path}/"
             ))
 
-    # 反向检查：platforms/ 下的目录是否都在映射表中
-    platforms_dir = _p("platforms")
-    if platforms_dir.is_dir():
+    # 反向检查：resource-platforms/scripts/ 下的平台目录是否都在映射表中
+    scripts_platforms_dir = _p("resource-platforms/scripts")
+    if scripts_platforms_dir.is_dir():
         mapped_ids = {p[0] for p in active_platforms + planned_platforms}
-        for child in sorted(platforms_dir.iterdir()):
-            if child.is_dir() and not child.name.startswith(".") and not child.name.startswith("_"):
+        for child in sorted(scripts_platforms_dir.iterdir()):
+            if child.is_dir() and not child.name.startswith(".") and not child.name.startswith("_") and child.name != "shared":
                 if child.name not in mapped_ids:
                     results.append(CheckResult(
                         f"平台映射 {child.name} (未注册)", "WARN",
-                        f"platforms/{child.name}/ 存在但未在映射表中注册"
+                        f"resource-platforms/scripts/{child.name}/ 存在但未在映射表中注册"
                     ))
 
     # 检查已接入平台的适配器脚本
     for platform_id in ACTIVE_PLATFORMS:
-        adapter = _p(f"platforms/{platform_id}/scripts/adapter.py")
+        adapter = _p(f"resource-platforms/scripts/{platform_id}/adapter.py")
         if not adapter.is_file():
             results.append(CheckResult(
                 f"平台适配器 {platform_id}", "FAIL",
-                f"adapter.py 不存在: platforms/{platform_id}/scripts/adapter.py"
+                f"adapter.py 不存在: resource-platforms/scripts/{platform_id}/adapter.py"
             ))
         else:
             results.append(CheckResult(

@@ -16,6 +16,9 @@ platforms/*/config/credentials.json
 downloads/
 logs/
 
+# 会话上下文数据（Session I/O 持久化）
+.learning-resource-work/
+
 # WorkBuddy 工作区文件
 .workbuddy/
 

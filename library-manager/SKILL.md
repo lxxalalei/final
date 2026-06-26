@@ -218,7 +218,7 @@ description: 本地学习资料库的归档、索引维护、检索复用与去�
 
 ## 跨平台内容级去重
 
-> **实现位置**：`../shared/dedup.py`（`DedupEngine` / `DedupConfig`）
+> **实现位置**：`../resource-platforms/scripts/shared/dedup.py`（`DedupEngine` / `DedupConfig`）
 > **配置位置**：`config/settings.yaml` 的 `dedup` 段
 
 当同一学习内容被多个平台收录（如 B站搬运的视频也出现在抖音），或同一资源被多次获取时，去重引擎会在归档前自动检测并按策略处理，避免资料库膨胀。
@@ -384,7 +384,7 @@ dedup:
 ### 第零步：归档前去重检查（自动执行）
 
 > **此步骤在所有归档操作之前自动执行**，无需用户干预。
-> 实现见 `../shared/dedup.py` 的 `DedupEngine.check_before_archive()`。
+> 实现见 `../resource-platforms/scripts/shared/dedup.py` 的 `DedupEngine.check_before_archive()`。
 
 1. **加载资料库索引**
    - 读取 `学习资料库/.library/index.json`
@@ -717,9 +717,69 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
 
 ---
 
+## 读写文件
+
+### 1. 获取任务路径
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage4_download.json`）、输出文件名（通常 `stage5_archive.json`）
+
+### 2. 读取上游数据
+- 读取 `{session_dir}/stage4_download.json` 的 `data` 部分
+- 提取下载结果列表
+
+### 3. 执行归档并写入结果
+
+执行归档前去重检查 → 文件移动 → 索引更新后，将以下结构写入 `{session_dir}/stage5_archive.json`：
+
+```json
+{
+  "_meta": {
+    "stage": 5,
+    "session_id": "{session_id}",
+    "skill": "library-manager",
+    "created_at": "ISO时间",
+    "input_from": "stage4_download.json"
+  },
+  "_summary": {
+    "archived_count": 3,
+    "skipped_count": 1,
+    "dedup_stats": {"new": 3, "duplicate": 1}
+  },
+  "data": {
+    "archived_count": 3,
+    "skipped_count": 1,
+    "resources": [
+      {
+        "// 说明": "保留 stage4 全部字段 + 新增归档字段",
+        "resource_id": "...",
+        "title": "...",
+        "platform": "...",
+        "download_status": "...",
+        "...": "（stage4 的所有字段原样保留）",
+
+        "library_path": "学习资料库/数学/小学三年级/四则混合运算/",
+        "archive_time": "2026-06-26T16:00:00+08:00",
+        "dedup_status": "new / duplicate / skipped"
+      }
+    ]
+  }
+}
+```
+
+- `_summary`（flow 读这个）：归档成功数、跳过数、去重统计
+- `data`（flow 汇总报告读这个）：每个资源在上游字段基础上新增——`library_path`（资料库内路径）、`archive_time`（归档时间 ISO）、`dedup_status`（new/duplicate/skipped）
+- **保留规则**：上游全部字段（含 download_status/file_path 等）原样带过来，flow 最终汇总报告依赖这些字段
+
+### 4. 完成后
+
+- 提示 flow 生成最终汇总报告
+- 只返回 `_summary`，不在上下文中展开完整 data
+
+---
+
 ## 参考资料
 
 - `references/library-structure.md` - 资料库结构详细规范
 - `../shared/schemas/resource-schema.md` - 资源元数据完整规范
 - `../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
-- `../shared/dedup.py` - 跨平台内容级去重引擎（`DedupEngine` / `DedupConfig`）
+- `../shared/schemas/session-io-spec.md` - 会话上下文读写规范
+- `../resource-platforms/scripts/shared/dedup.py` - 跨平台内容级去重引擎（`DedupEngine` / `DedupConfig`）

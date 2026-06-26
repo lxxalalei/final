@@ -2,9 +2,9 @@
 
 > **目的**：评估项目可拓展的资源平台，并按搜索接口调用难易度分级，为后续 platform skill 开发排序提供决策依据。
 >
-> **当前已接入 5 个平台**：bilibili（P0）、smartedu（P1）、zhihu（P2）、douyin（P2）、weibo（P2）。
+> **当前已接入 7 个平台**：bilibili（P0）、ximalaya（P0）、smartedu（P1）、zhihu（P2）、douyin（P2）、weibo（P2）、open163（P2）。
 >
-> **生成时间**：2026-06-25
+> **生成时间**：2026-06-25 | **更新时间**：2026-06-26
 
 ---
 

@@ -29,7 +29,7 @@ description: 儿童学习资源获取与归档工作台的主入口，负责协�
             ↓                             ↓
     ┌───────────────────┐   ┌───────────────────┐
     │  第三层：平台执行层                    │
-    │  platform-bilibili   platform-xxx     │
+    │  resource-platforms                  │
     └───────────────────┘   └───────────────────┘
 ```
 
@@ -62,6 +62,60 @@ description: 儿童学习资源获取与归档工作台的主入口，负责协�
 
 ---
 
+## 数据流转规则
+
+> 各阶段输出通过 JSON 文件保存到工作目录，不堆积在上下文中。
+
+### 1. 创建会话
+
+收到新需求时：
+- 生成 session_id：`{日期}-{时间}-{主题英文缩写}`，如 `20260626-1441-math-grade3`
+- 创建目录：`.learning-resource-work/sessions/{session_id}/`
+- 创建子目录：`downloads/`
+- 写入 `manifest.json`：
+
+```json
+{
+  "session_id": "20260626-1441-math-grade3",
+  "user_request": "帮我找三年级数学练习题",
+  "status": "in_progress",
+  "current_stage": 1,
+  "stages": {
+    "stage1": {"status": "pending", "output": "stage1_intent.json"},
+    "stage2": {"status": "pending", "output": "stage2_search.json"},
+    "stage3": {"status": "pending", "output": "stage3_select.json"},
+    "stage4": {"status": "pending", "output": "stage4_download.json"},
+    "stage5": {"status": "pending", "output": "stage5_archive.json"}
+  }
+}
+```
+
+### 2. 调度每个阶段
+
+对阶段 1→2→3→4→5 依次执行：
+- 更新 manifest.json：当前阶段标记为 `in_progress`
+- 调用对应 Skill，传递三个参数：会话目录路径、上游文件名、输出文件名
+- Skill 返回后：只读输出文件的 `_summary`，不读完整 data
+- 更新 manifest.json：当前阶段标记为 `completed`，回填 summary
+- 根据 summary 决定下一步
+
+### 3. 上下文管理
+
+上下文中只保留 session_id、当前阶段、各阶段 summary。需要展示给用户时（如候选列表），从文件读取 data 部分后渲染。
+
+### 4. 需求类型判断
+
+| 用户说的 | 处理方式 |
+|---------|---------|
+| 新的搜索/下载主题 | 创建新会话，从阶段一开始 |
+| "刚才那个""加选几个" | 复用当前 session_id，从指定阶段继续 |
+| "我之前存的""上次下载的" | 调用 library-manager 查资料库（不碰 sessions/） |
+| "继续上次没下完的" | 列出 sessions/ 目录让用户选，从中断处继续 |
+
+> 搜索结果是时效性数据，每次新需求都重新搜索。
+
+---
+
 ## 协作的 Skill 清单
 
 | Skill | 所在层 | 职责 | 调用阶段 |
@@ -71,7 +125,7 @@ description: 儿童学习资源获取与归档工作台的主入口，负责协�
 | `resource-selector` | 业务能力层 | 候选展示与用户选择 | 阶段三 |
 | `resource-downloader` | 业务能力层 | 下载调度（分发+重试+降级） | 阶段四 |
 | `library-manager` | 业务能力层 | 资源归档、索引、管理 | 阶段五 |
-| `platform-xxx` | 平台执行层 | 具体平台的搜索+下载 | 阶段二、四（由调度层调用） |
+| `resource-platforms` | 平台执行层 | 具体平台的搜索+下载 | 阶段二、四（由调度层调用） |
 
 > **注意**：platform skill 由 search 和 downloader 调度器直接调用，flow 不直接调用 platform skill。
 > 
@@ -309,9 +363,10 @@ description: 儿童学习资源获取与归档工作台的主入口，负责协�
 - `../shared/schemas/error-codes.md` - 统一错误码体系
 - `../shared/schemas/quality-rubric.md` - 质量评估标准（唯一权威）
 - `../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
+- `../shared/schemas/session-io-spec.md` - 会话上下文读写规范（文件持久化）
 - `../shared/config/platform-mapping.md` - 平台-Skill 映射表
-- `../shared/dedup.py` - 跨平台内容级去重引擎
+- `../resource-platforms/scripts/shared/dedup.py` - 跨平台内容级去重引擎
 
 ---
 
-*Skill 版本：v2.4 | 架构版本：三层架构（流程编排层 / 业务能力层 / 平台执行层）*
+*Skill 版本：v3.0 | 架构版本：三层架构（流程编排层 / 业务能力层 / 平台执行层）*

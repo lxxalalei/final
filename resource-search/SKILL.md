@@ -1,3 +1,8 @@
+---
+name: resource-search
+description: 全域搜索调度器。接收结构化查询指令，进行平台路由判断（查平台优势图谱选择最佳平台组合），调度各平台执行搜索，汇总结果后跨平台去重、质量评估分级（S/A/B/C），输出结构化候选资源列表。
+---
+
 # resource-search · 全域搜索调度
 
 ## 职责
@@ -9,7 +14,7 @@ resource-search 是儿童学习资源搜索的**中枢调度器**，负责：
 5. **输出候选列表**：交付结构化的高质量候选资源供用户选择
 
 > 💡 **核心定位**：search 不负责具体平台的搜索技巧细节，而是负责"选对平台、用对方法、控好质量"。
-> 具体平台的搜索技巧，见各平台专属 skill（`platforms/<平台>/SKILL.md`）。
+> 具体平台的搜索技巧，见 `../resource-platforms/references/<平台>.md`。
 
 ## 输入
 - 结构化查询指令组（来自 resource-intent）
@@ -44,7 +49,7 @@ resource-search 是儿童学习资源搜索的**中枢调度器**，负责：
 2. **补充平台**：针对性搜，补全特定形态资源
 3. **通用搜索兜底**：防止漏网之鱼
 
-**执行方式**：各平台的搜索由对应 platform skill 执行，search 负责调度调用。各平台搜索技巧见 `../platforms/<平台>/SKILL.md`。
+**执行方式**：各平台的搜索由对应 platform skill 执行，search 负责调度调用。各平台搜索技巧见 `../resource-platforms/references/<平台>.md`。
 
 **要求**：单需求至少覆盖 3 类来源，召回 20+ 原始结果。
 
@@ -96,6 +101,7 @@ resource-search 是儿童学习资源搜索的**中枢调度器**，负责：
 - **优质站点白名单**：`references/优质站点白名单.md`（官方站点分级清单）
 - **资源元数据规范**：`../shared/schemas/resource-schema.md`
 - **跨 Skill 上下文传递契约**：`../shared/schemas/skill-contract.md`
+- **会话上下文读写规范**：`../shared/schemas/session-io-spec.md`
 
 ## 输出格式
 
@@ -124,3 +130,68 @@ resource-search 是儿童学习资源搜索的**中枢调度器**，负责：
 ```
 
 > 完整字段列表见 output-templates.md 模板 A.2（单卡片可复用模板）。
+
+---
+
+## 读写文件
+
+### 1. 获取任务路径
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage1_intent.json`）、输出文件名（通常 `stage2_search.json`）
+
+### 2. 读取上游数据
+- 读取 `{session_dir}/stage1_intent.json` 的 `data` 部分
+- 提取 `queries` 列表和搜索参数
+
+### 3. 执行搜索并写入结果
+
+搜索完成后，将以下结构写入 `{session_dir}/stage2_search.json`：
+
+```json
+{
+  "_meta": {
+    "stage": 2,
+    "session_id": "{session_id}",
+    "skill": "resource-search",
+    "created_at": "ISO时间",
+    "input_from": "stage1_intent.json"
+  },
+  "_summary": {
+    "total_count": 22,
+    "platforms_searched": ["bilibili", "ximalaya", "smartedu"],
+    "quality_dist": {"S": 3, "A": 8, "B": 8, "C": 3}
+  },
+  "data": {
+    "total_count": 22,
+    "search_summary": "查询3组/平台4个/召回85条/初筛后40条/去重后22条",
+    "resources": [
+      {
+        "resource_id": "平台名:平台内ID",
+        "title": "资源标题",
+        "type": "视频/音频/文档/练习题/绘本/课件/图片",
+        "subject": "学科/领域",
+        "platform": "bilibili",
+        "source_url": "来源URL",
+        "source_name": "B站",
+        "quality_level": "S/A/B/C",
+        "download_feasibility": "高/中/低",
+        "platform_quality_score": 85,
+        "description": "内容简介",
+        "age_range": "适龄范围",
+        "grade_level": "适用年级",
+        "tags": ["标签1"],
+        "view_count": 5000000,
+        "duration": "时长/集数",
+        "language": "中文"
+      }
+    ]
+  }
+}
+```
+
+- `_summary`（flow 读这个）：候选总数、搜索过的平台、质量分布
+- `data`（下游 selector 读这个）：候选资源列表，每个资源必须包含以下字段——`resource_id`、`title`、`type`、`subject`、`platform`、`source_url`、`source_name`、`quality_level`、`download_feasibility`，可选字段——`platform_quality_score`、`description`、`age_range`、`grade_level`、`tags`、`view_count`、`duration`、`language`
+
+### 4. 完成后
+
+- 提示 flow 调用 `resource-selector` 继续执行
+- 只返回 `_summary`，不在上下文中展开完整 data

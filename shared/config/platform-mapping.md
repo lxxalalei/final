@@ -13,16 +13,16 @@
 
 | 平台标识 | 平台名称 | 对应 Skill | 状态 | 优先级 | 资源类型 |
 |---------|---------|-----------|------|--------|---------|
-| `bilibili` | B站（哔哩哔哩） | `platforms/bilibili` | ✅ 可用 | P0 | 视频 |
-| `ximalaya` | 喜马拉雅 | `platforms/ximalaya` | ✅ 可用（搜索） | P0 | 音频 |
-| `smartedu` | 国家中小学智慧教育平台 | `platforms/smartedu` | ✅ 可用 | P1 | 视频/课件/练习题 |
-| `baiduwenku` | 百度文库 | `platforms/baiduwenku` | 规划中 | P1 | 文档/课件 |
-| `zhihu` | 知乎 | `platforms/zhihu` | ✅ 可用 | P2 | 图文 |
-| `xiaohongshu` | 小红书 | `platforms/xiaohongshu` | 规划中 | P2 | 图文 |
-| `douyin` | 抖音 | `platforms/douyin` | ✅ 可用 | P2 | 短视频 |
-| `weibo` | 微博 | `platforms/weibo` | ✅ 可用 | P2 | 图文/短视频 |
-| `open163` | 网易公开课 | `platforms/open163` | ✅ 可用（搜索） | P2 | 视频/公开课 |
-| `cctv` | 央视网 | `platforms/cctv` | 规划中 | P2 | 视频/动画 |
+| `bilibili` | B站（哔哩哔哩） | `resource-platforms/scripts/bilibili` | ✅ 可用 | P0 | 视频 |
+| `ximalaya` | 喜马拉雅 | `resource-platforms/scripts/ximalaya` | ✅ 可用（搜索） | P0 | 音频 |
+| `smartedu` | 国家中小学智慧教育平台 | `resource-platforms/scripts/smartedu` | ✅ 可用 | P1 | 视频/课件/练习题 |
+| `baiduwenku` | 百度文库 | `resource-platforms/scripts/baiduwenku` | 规划中 | P1 | 文档/课件 |
+| `zhihu` | 知乎 | `resource-platforms/scripts/zhihu` | ✅ 可用 | P2 | 图文 |
+| `xiaohongshu` | 小红书 | `resource-platforms/scripts/xiaohongshu` | 规划中 | P2 | 图文 |
+| `douyin` | 抖音 | `resource-platforms/scripts/douyin` | ✅ 可用 | P2 | 短视频 |
+| `weibo` | 微博 | `resource-platforms/scripts/weibo` | ✅ 可用 | P2 | 图文/短视频 |
+| `open163` | 网易公开课 | `resource-platforms/scripts/open163` | ✅ 可用（搜索） | P2 | 视频/公开课 |
+| `cctv` | 央视网 | `resource-platforms/scripts/cctv` | 规划中 | P2 | 视频/动画 |
 | `generic` | 通用/未知 | （通用兜底） | ✅ 可用 | - | 所有类型 |
 
 ---
@@ -238,7 +238,7 @@
 ## 新增平台 Skill 的流程
 
 1. 在映射表中添加新的平台条目，状态设为"开发中"
-2. 创建 platform-xxx 目录和 SKILL.md
+2. 在 `resource-platforms/scripts/` 下创建平台子目录，并在 `resource-platforms/references/` 添加平台 SKILL.md
 3. 实现搜索能力
 4. 实现下载能力
 5. 测试验证
