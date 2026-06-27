@@ -1,112 +1,379 @@
 ---
 name: resource-platforms
-description: 儿童学习资源平台执行层。封装7个平台（B站/智慧教育/知乎/抖音/微博/喜马拉雅/网易公开课）的搜索和下载能力。当需要执行具体平台搜索、视频下载、音频获取、文档导出等操作时加载本Skill。提供平台脚本路径、反爬策略、认证要求和下载方法。
+description: 搜索执行层。接收搜索任务清单，调度各平台脚本执行搜索，汇总原始结果，进行跨平台去重、质量评估打分、低质量过滤，最终输出分级排序后的候选资源列表。
 ---
 
-# resource-platforms · 平台执行层
+# resource-platforms · 搜索执行与过滤
 
-## 概述
+## 我是谁
 
-本 Skill 是三层架构中的**平台执行层**，封装 7 个平台的搜索与下载能力。
-不直接面向用户需求，由 `resource-search`（搜索调度）和 `resource-downloader`（下载调度）通过 `platform_base.py` 的 `CLIBasedPlatformSkill` 接口调度调用。
+**上游**：resource-search（从搜索策略 Skill 接收搜索任务清单）
+**下游**：resource-selector（把候选资源列表传给选择器）
+**阶段编号**：stage 3
 
----
-
-## 平台能力矩阵
-
-| 平台 | 搜索 | 下载 | 登录要求 | 反爬等级 | 脚本目录 | 文档 |
-|------|------|------|---------|---------|---------|------|
-| bilibili | ✅ | ✅ | 搜索无需 | ⭐⭐⭐⭐ CDP+WBI | scripts/bilibili/ | references/bilibili.md |
-| smartedu | ✅ | ✅ | Token可选 | ⭐⭐⭐ | scripts/smartedu/ | references/smartedu.md |
-| zhihu | ✅ | ✅ | Cookie | ⭐⭐⭐ | scripts/zhihu/ | references/zhihu.md |
-| douyin | ✅ | ✅ | 自动Token | ⭐⭐⭐⭐ ABogus+f2 | scripts/douyin/ | references/douyin.md |
-| weibo | ✅ | ✅ | Cookie | ⭐⭐⭐ | scripts/weibo/ | references/weibo.md |
-| ximalaya | ✅ | 🔲 | 无需 | ⭐ | scripts/ximalaya/ | references/ximalaya.md |
-| open163 | ✅ | 🔲 | 无需 | ⭐ | scripts/open163/ | references/open163.md |
+核心定位：**搜索的执行者**——拿到搜索任务后，实际去各个平台搜，把结果收回来，去重、打分、过滤，最后输出干净的候选列表。
 
 ---
 
-## 脚本执行机制
+## 执行前准备
 
-### CLIBasedPlatformSkill 约定
+### 1. 确认参数
 
-所有平台通过 `scripts/shared/platform_base.py` 的 `CLIBasedPlatformSkill` 基类接入：
+从 flow 传入的参数中获取：
+- `{session_dir}`：会话目录路径（绝对路径）
+- `{input_file}`：上游输入文件名（通常是 `stage2_search_plan.json`）
+- `{output_file}`：本阶段输出文件名（通常是 `stage3_candidates.json`）
 
-1. **adapter.py**：每个平台的 `adapter.py` 继承 `CLIBasedPlatformSkill`，设置 `platform_name`
-2. **搜索约定**：脚本名 `*_search.py` 自动被发现，执行 `{script} search {keyword} --max {n} -o {file}`
-3. **下载约定**：脚本名 `*_dl.py` 自动被发现，执行 `{script} download {url} -o {dir}`
-4. **输出标准化**：脚本输出 JSON 经 `_normalize_search_result()` 自动转为契约格式
+### 2. 读取上游输入
 
-### 共享模块
+读取 `{session_dir}/{input_file}` 文件，提取其中的 `data` 部分。
 
-| 模块 | 路径 | 功能 |
+> 💡 只需要读 `data`，`_meta` 和 `_summary` 可以忽略（那是给 flow 用的）
+
+**需要读取的字段**（从 data 中）：
+- `search_tasks`：各平台搜索任务列表（数组，✅必选）
+  - 每个任务包含：
+    - `platform_id`：平台标识（如 bilibili）
+    - `platform_name`：平台名称
+    - `priority`：优先级（P0 / P1 / P2）
+    - `queries`：该平台的查询列表
+    - `target_count`：预期召回数量
+    - `search_params`：其他搜索参数（可选）
+- `core_topic`：核心主题（字符串，✅必选）
+  - 用于质量评估中的相关性判断
+- `target_age`：目标年龄范围（字符串，✅必选）
+  - 用于质量评估中的适龄匹配度评分
+- `search_mode`：搜索模式（字符串，✅必选）
+  - standard / exhaustive
+
+---
+
+## 执行步骤
+
+### 第一步：确认可用平台与脚本路径
+
+根据搜索任务中的平台列表，确认每个平台的搜索脚本路径和调用方式。
+
+**平台脚本查找规则**：
+- 脚本位于 `./scripts/{platform_id}/` 目录下
+- 搜索脚本命名：`{platform_id}_search.py`
+- 每个平台有一个 `adapter.py` 作为统一接口
+
+**可用平台检查**：
+- 检查平台脚本是否存在
+- 检查平台状态是否可用
+- 不可用的平台跳过，记录到日志中
+
+> 📖 平台能力矩阵见：`./references/平台能力矩阵.md`
+> 📖 各平台详细文档见：`./references/{platform_id}.md`
+
+**本步产出**：
+- `available_tasks`：可用的搜索任务（过滤掉不可用的平台）
+- `skipped_platforms`：跳过的平台及原因
+
+---
+
+### 第二步：按优先级调度各平台搜索
+
+按平台优先级从高到低，依次执行搜索。
+
+**调度方式**：
+- 调用各平台的搜索脚本
+- 传入参数：查询关键词、数量限制、其他搜索参数
+- 每个平台的搜索结果保存到临时文件
+
+**执行顺序**：
+1. **P0 平台**（第一梯队）：优先执行，分配更多查询
+2. **P1 平台**（第二梯队）：其次执行
+3. **P2 平台**（补充）：最后执行
+
+**每个平台的执行流程**：
+1. 读取该平台的查询列表
+2. 按查询优先级依次执行搜索
+3. 收集搜索结果
+4. 进行平台内初步去重
+5. 结果标准化（转为统一的资源元数据格式）
+
+> 💡 各平台的搜索技巧和注意事项，见对应平台的参考文档。
+> 执行时如果遇到问题（反爬、登录等），参考对应平台的文档处理。
+
+**本步产出**：
+- `raw_results`：各平台原始搜索结果汇总（数组）
+  - 每个结果是一个资源对象，包含基本元数据
+- `platform_stats`：各平台的搜索统计
+  - 每个平台执行了几个查询、召回了多少条结果
+
+---
+
+### 第三步：跨平台去重
+
+对所有平台的原始结果进行跨平台去重。
+
+**去重策略（三级）**：
+
+1. **resource_id 完全一致**（最强信号）
+   - 同一平台的相同 ID 直接去重
+   - 保留质量评分最高的那个
+
+2. **URL 结构化去重**
+   - 去除 URL 中的追踪参数后比较
+   - 同一资源在不同平台的转载，URL 可能不同，这一步不一定能识别
+
+3. **标题相似度去重**
+   - 计算标题的编辑距离和相似度
+   - 相似度超过阈值（如 0.85）视为重复
+   - 保留来源更权威、质量更高的那个
+
+4. **内容指纹去重**（可选，耗时较长）
+   - 对文档/视频简介等内容计算指纹
+   - 指纹相同视为重复
+
+**去重后的处理策略**：
+- `keep_best_quality`（默认）：保留质量最高的
+- `keep_earliest`：保留最先搜到的
+- `mark_and_keep_all`：标记重复但都保留
+
+> 📖 完整去重规则见：`./scripts/shared/dedup.py`
+> 📖 去重引擎文档见：`./references/去重策略说明.md`
+
+**本步产出**：
+- `deduped_results`：去重后的结果列表（数组）
+- `dedup_stats`：去重统计
+  - 原始数量、去重后数量、移除了多少重复
+
+---
+
+### 第四步：质量评估与分级 ⭐ 核心
+
+对去重后的结果，按五维评分体系进行质量评估。
+
+**五维评分体系**：
+
+| 维度 | 权重 | 说明 |
 |------|------|------|
-| platform_base.py | scripts/shared/ | 平台基类 + RateLimiter + CircuitBreaker + CredentialManager |
-| config_loader.py | scripts/shared/ | 统一配置加载（settings.yaml + 环境变量） |
-| dedup.py | scripts/shared/ | 跨平台内容级去重引擎 |
-| logger.py | scripts/shared/ | 日志 + 脱敏过滤器 |
-| utils.py | scripts/shared/ | 通用工具函数 |
-| wbi_sign.py | scripts/shared/ | B站 WBI 签名算法 |
+| 内容质量与完整性 | 25% | 内容是否丰富、系统、准确 |
+| 适龄匹配度 | 25% | 是否适合目标年龄段 |
+| 权威可信度 | 20% | 来源是否可靠、官方/机构/大V |
+| 可获取性 | 20% | 能否下载/保存、是否免费 |
+| 安全与体验 | 10% | 是否有广告、是否适合儿童 |
+
+**前置门槛**：
+- 主题相关性：不相关的资源直接过滤，不进入评分
+- 安全底线：有明显安全风险的直接过滤
+
+**质量分级**：
+- **S 级**（强烈推荐）：综合得分 ≥ 90 分
+- **A 级**（优质推荐）：综合得分 75-89 分
+- **B 级**（可用推荐）：综合得分 60-74 分
+- **C 级**（谨慎推荐）：综合得分 < 60 分
+
+> 📖 完整评估标准见：`./references/schemas/quality-rubric.md`
+
+**本步产出**：
+- `rated_results`：带质量评分和分级的结果列表（数组）
+  - 每个资源增加：
+    - `quality_score`：综合得分（数字）
+    - `quality_level`：质量等级（S/A/B/C）
+    - `quality_details`：各维度得分（对象，可选）
 
 ---
 
-## 新增平台指南
+### 第五步：低质量过滤与精选
 
-接入新平台只需 3 步：
+过滤掉低质量结果，精选出最终候选列表。
 
-1. 创建 `scripts/新平台名/` 目录
-2. 编写搜索脚本 `新平台名_search.py`（输出标准 candidate JSON）
-3. 编写 `adapter.py`（继承 `CLIBasedPlatformSkill`，设置 `platform_name`）
+**过滤规则**：
+1. 移除 C 级资源（除非候选特别少）
+2. 移除非中文内容（英语学习等明确需求除外）
+3. 移除明显广告、营销内容
+4. 移除付费/VIP 且无法预览的内容
+5. 移除境外网站、未知域名的内容
 
-> 完整模板见：`../_templates/platform-skill-template.md`
+**精选数量**：
+- 标准模式：20-25 个
+- 穷尽模式：30-40 个
+
+**排序原则**：
+1. 质量优先：S 级 → A 级 → B 级 → C 级
+2. 同质量内：下载可行性高的优先
+3. 同平台内：按热度/播放量排序
+4. 平台多样性：尽量保证多个平台都有代表
+
+**分类整理**：
+- 统计各平台数量
+- 统计各质量等级数量
+- 生成搜索过程摘要
+
+**本步产出**：
+- `final_candidates`：最终候选资源列表（数组，按质量排序）
+- `search_summary`：搜索过程摘要（字符串）
+- `quality_dist`：质量分布（对象）
+- `platforms_used`：实际用到的平台列表（数组）
 
 ---
 
-## 参考文档索引
+### 第六步：写入输出文件
 
-### 平台专属文档
+将最终候选列表写入 `{session_dir}/{output_file}`（通常是 `stage3_candidates.json`）。
 
-| 文档 | 内容 |
-|------|------|
-| `references/bilibili.md` | B站搜索/下载、CDP模式、WBI签名、字幕获取 |
-| `references/smartedu.md` | 智慧教育平台全资源下载（PDF/m3u8/音频/图片） |
-| `references/smartedu-architecture.md` | smartedu 架构详解（模块依赖/流程图/CDN策略） |
-| `references/smartedu-resource-schema.md` | smartedu 资源类型定义 |
-| `references/zhihu.md` | 知乎搜索+内容导出 Markdown |
-| `references/douyin.md` | 抖音 f2引擎搜索+无水印下载 |
-| `references/weibo.md` | 微博 ajax搜索+用户图文下载 |
-| `references/ximalaya.md` | 喜马拉雅专辑/声音搜索（公开API） |
-| `references/open163.md` | 网易公开课搜索（服务端渲染解析） |
+**文件格式**（三层结构）：
 
-### 通用参考
+```json
+{
+  "_meta": {
+    "stage": 3,
+    "session_id": "从输入文件中继承",
+    "skill": "resource-platforms",
+    "created_at": "当前时间（ISO 8601 格式）",
+    "input_from": "{input_file}"
+  },
+  "_summary": {
+    // 给 flow 看的摘要
+  },
+  "data": {
+    // 给下游 selector 用的完整候选列表
+  }
+}
+```
 
-| 文档 | 内容 |
-|------|------|
-| `references/download-methods.md` | 下载方法全览（yt-dlp/m3u8/f2/ffmpeg，913行） |
-| `references/platform-search-contract.md` | 搜索接口契约（search ↔ platform） |
-| `references/platform-download-contract.md` | 下载接口契约（downloader ↔ platform） |
+---
 
-### 外部规范（根目录 shared/）
+#### _summary 部分（flow 读这个做调度）
 
-| 文档 | 路径 |
-|------|------|
-| 资源元数据规范 | `../shared/schemas/resource-schema.md` |
-| 质量评估标准 | `../shared/schemas/quality-rubric.md` |
-| 错误码体系 | `../shared/schemas/error-codes.md` |
-| 平台优势图谱 | `../shared/config/platform-advantages.md` |
-| 平台映射表 | `../shared/config/platform-mapping.md` |
-| 日志规范 | `../shared/logging-convention.md` |
+**必须写入的字段**：
+- `total_count`：候选总数（数字）
+  - 示例：22
+- `platforms`：用到的平台列表（数组）
+  - 示例：["bilibili", "smartedu", "ximalaya", "zhihu"]
+- `quality_dist`：质量分布（对象）
+  - 示例：{"S": 3, "A": 8, "B": 8, "C": 3}
+- `has_results`：是否有结果（布尔值）
+  - 示例：true
+
+> 💡 _summary 必须精简，flow 只读前几十行就知道结果怎么样。
+> 如果 total_count = 0，flow 会主动询问用户是否放宽条件。
+
+---
+
+#### data 部分（下游 selector 读这个）
+
+**必须写入的字段**：
+
+- `total_count`：候选总数（数字，✅必选）
+
+- `search_summary`：搜索过程摘要（字符串，✅必选）
+  - 示例："搜索了4个平台，执行15个查询，原始召回72条，去重后45条，评分后精选22条"
+
+- `resources`：候选资源列表（数组，✅必选，按质量从高到低排序）
+  - 每个资源对象遵循统一资源元数据规范
+  - 核心字段包括：
+    - `resource_id`：资源唯一标识（字符串，✅必选）
+      - 格式：`{platform}:{平台内ID}`
+      - 示例："bilibili:BV1xx411c7mD"
+    - `title`：标题（字符串，✅必选）
+    - `type`：资源类型（字符串，✅必选）
+      - 视频 / 音频 / 文档 / 图文 / 课件 / 练习题
+    - `platform`：平台标识（字符串，✅必选）
+    - `source_url`：来源链接（字符串，✅必选）
+    - `source_name`：来源平台名称（字符串，✅必选）
+    - `quality_level`：质量等级（字符串，✅必选）
+      - S / A / B / C
+    - `quality_score`：质量评分（数字，✅必选）
+      - 0-100 分
+    - `download_feasibility`：下载可行性（字符串，✅必选）
+      - 高 / 中 / 低
+    - `description`：简介/描述（字符串，⚠️可选）
+    - `age_range`：适用年龄范围（字符串，⚠️可选）
+    - `grade_level`：适用年级（字符串，⚠️可选）
+    - `tags`：标签列表（数组，⚠️可选）
+    - `view_count`：播放/浏览量（数字，⚠️可选）
+    - `duration`：时长/集数（字符串，⚠️可选）
+    - `language`：语言（字符串，⚠️可选）
+    - `is_free`：是否免费（布尔值，⚠️可选）
+    - `author`：作者/上传者（字符串，⚠️可选）
+
+> 📖 完整字段规范见：`./references/schemas/resource-schema.md`
+
+- `search_stats`：搜索统计（对象，⚠️可选）
+  - 包含：平台统计、查询数量、原始召回数、去重数等
+  - 供调试和优化参考
+
+- `intent_data`：透传的 intent 数据（对象，⚠️可选）
+  - 把上游 intent 的数据原样透传，供下游需要时使用
+
+---
+
+## 完成后
+
+### 1. 确认输出
+
+确认 `{session_dir}/{output_file}` 已成功写入。
+
+### 2. 清理临时文件
+
+清理搜索过程中产生的临时文件（如果有）。
+
+### 3. 通知 flow
+
+向 flow 返回执行结果，只返回 _summary 的内容：
+
+```
+✅ 已完成搜索执行与过滤
+📄 输出文件：{output_file}
+📊 摘要：
+- 候选总数：{total_count} 个
+- 覆盖平台：{platforms 数量} 个
+- 质量分布：S级 S个 / A级 A个 / B级 B个 / C级 C个
+```
+
+> 💡 **重要**：只返回 _summary，不要在上下文中展开完整的资源列表。
+> 完整数据已经写入文件，下游 selector Skill 会去读并展示给用户。
 
 ---
 
 ## 关键原则
 
-1. **脚本不可用时标记跳过** — 不阻塞其他平台的搜索/下载
-2. **搜索优先用 API** — 避免启动浏览器（CDP/Playwright 仅作为 fallback）
-3. **UGC 内容需严格评分** — 质量参差的平台内容交由 selector 做质量过滤
-4. **反爬尊重** — RateLimiter 保证最小请求间隔，CircuitBreaker 熔断保护
-5. **凭证安全** — Cookie/Token 通过环境变量传递，日志自动脱敏
+### 执行原则
+1. **按优先级执行**：高优先级平台先搜，保证核心质量
+2. **结果标准化**：各平台的结果都要转为统一格式
+3. **错误容错**：某个平台失败不影响整体，跳过继续
+
+### 去重原则
+1. **宁重勿漏**：去重要保守，宁可留几个重复，也不要误删好资源
+2. **保留最优**：重复的资源保留质量最高、来源最可靠的
+
+### 质量原则
+1. **相关性优先**：不相关的内容质量再高也没用
+2. **适龄匹配**：适合孩子年龄的才是好资源
+3. **安全底线**：有安全风险的直接过滤掉
+4. **可获取性**：同等质量下，能下载保存的优先
 
 ---
 
-*平台 Skill 版本：v1.0 | 平台数量：7（搜索7/下载5）*
+## 平台能力速查
+
+| 平台 | 搜索能力 | 登录要求 | 反爬等级 | 脚本路径 |
+|------|---------|---------|---------|---------|
+| bilibili | ✅ 强 | 无需 | ⭐⭐⭐⭐ | scripts/bilibili/ |
+| smartedu | ✅ 强 | 可选 | ⭐⭐⭐ | scripts/smartedu/ |
+| zhihu | ✅ 中 | Cookie | ⭐⭐⭐ | scripts/zhihu/ |
+| douyin | ✅ 中 | 自动 | ⭐⭐⭐⭐ | scripts/douyin/ |
+| weibo | ✅ 中 | Cookie | ⭐⭐⭐ | scripts/weibo/ |
+| ximalaya | ✅ 强 | 无需 | ⭐ | scripts/ximalaya/ |
+| open163 | ✅ 中 | 无需 | ⭐ | scripts/open163/ |
+
+> 📖 各平台详细说明见 `./references/` 下对应文档
+
+---
+
+## 参考资料
+
+- **资源元数据规范**：`./references/schemas/resource-schema.md`（统一资源格式）
+- **质量评估标准**：`./references/schemas/quality-rubric.md`（五维评分体系）
+- **错误码体系**：`./references/schemas/error-codes.md`（统一错误码）
+- **平台能力矩阵**：`./references/平台能力矩阵.md`（各平台能力概览）
+- **去重策略说明**：`./references/去重策略说明.md`（去重引擎文档）
+- **数据契约**：`./references/schemas/skill-contract.md`（阶段三→四数据契约）
+- **会话 IO 规范**：`./references/schemas/session-io-spec.md`（文件读写规范）
+
+> 💡 参考资料放在最后，执行主流程时不需要看，需要时再查阅。
