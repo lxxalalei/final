@@ -135,7 +135,7 @@ description: 儿童学习资源下载调度器 Skill，负责根据资源平台�
 
 ### 错误类型与重试次数
 
-根据统一错误码体系（`shared/schemas/error-codes.md`）：
+根据错误码体系（详见下方「错误码速查」）：
 
 | 错误类型 | 最大重试次数 | 初始延时 | 递增方式 |
 |---------|-------------|---------|---------|
@@ -244,7 +244,7 @@ Level 3：保存标题 + 链接 + 摘要
       "download_status": "success",
       "degraded_level": "Level 0",
       "file_path": "/downloads/古诗/小学必背古诗文动画.mp4",
-      "file_size": "1.2GB",
+      "file_size": 156000000,
       "fetch_time": "2026-06-24 15:30:00",
       "fetch_method": "yt-dlp",
       "duration": "共228集"
@@ -293,31 +293,49 @@ Level 3：保存标题 + 链接 + 摘要
 
 ---
 
-## 错误处理
+## 错误码速查
 
-### 统一错误码
+> 完整错误码体系见 `references/error-codes.md`。以下是模型执行下载时需要快速查阅的核心部分。
 
-所有错误遵循统一错误码体系，详见：
-`../shared/schemas/error-codes.md`
+### 7 类前缀
 
-**主要错误类别：**
-- `NETWORK_` - 网络错误（超时、连接失败等）
-- `ANTI_CRAWL_` - 反爬错误（频率限制、验证码等）
-- `AUTH_` - 认证错误（需要登录、权限不足等）
-- `CONTENT_` - 内容错误（不存在、付费、DRM等）
-- `PARSE_` - 解析错误（结构变化、格式不支持等）
-- `DOWNLOAD_` - 下载错误（部分下载、文件损坏等）
-- `SYSTEM_` - 系统错误（工具未找到、配置错误等）
+| 前缀 | 场景 | 可重试？ |
+|------|------|---------|
+| `NETWORK_` | 超时、连接失败、DNS、SSL | ✅ 重试 2-3 次 |
+| `ANTI_CRAWL_` | 限流、拦截、验证码、IP封禁 | 限流重试，其余不重试 |
+| `AUTH_` | 需登录、登录过期、权限不足、会员专享 | 过期重试1次，其余不重试 |
+| `CONTENT_` | 不存在、已删除、私有、付费、DRM、地区限制 | ❌ 不重试，直接降级 |
+| `PARSE_` | 结构变化、格式不支持、内容为空 | 空内容重试1次，其余不重试 |
+| `DOWNLOAD_` | 下载失败、部分下载、文件损坏、磁盘满 | 损坏/部分重试1-2次，磁盘满不重试 |
+| `SYSTEM_` | 工具缺失、配置错误、未知错误 | 未知错误重试1次 |
+
+### 常用错误码
+
+| 错误码 | 场景 | 重试 | 降级动作 |
+|--------|------|------|---------|
+| `NETWORK_TIMEOUT` | 请求超时 | ✅ 3次 | → degrade_to_preview |
+| `ANTI_CRAWL_RATE_LIMITED` | 被限流 | ✅ 2次（加延时） | → retry_with_delay |
+| `ANTI_CRAWL_CAPTCHA` | 需验证码 | ❌ | → need_user_action |
+| `AUTH_LOGIN_REQUIRED` | 需登录 | ❌ | → need_user_action |
+| `AUTH_MEMBER_ONLY` | 会员专享 | ❌ | → degrade_to_summary |
+| `CONTENT_NOT_FOUND` | 内容不存在 | ❌ | → skip |
+| `CONTENT_REMOVED` | 已下架 | ❌ | → skip |
+| `CONTENT_PREMIUM_ONLY` | 付费内容 | ❌ | → degrade_to_summary |
+| `CONTENT_DRM_PROTECTED` | DRM保护 | ❌ | → degrade_to_link |
+| `PARSE_STRUCTURE_CHANGED` | 页面结构变了 | ❌ | → degrade_to_link |
+| `DOWNLOAD_FILE_CORRUPTED` | 文件损坏 | ✅ 1次 | → 重新下载 |
+| `DOWNLOAD_DISK_FULL` | 磁盘满 | ❌ | → need_user_action |
 
 ### 错误返回格式
 
-每个失败的资源都要包含：
+每个失败/降级的资源必须包含：
+
 ```json
 {
   "error_code": "CONTENT_PREMIUM_ONLY",
   "error_message": "需要付费才能查看完整内容",
   "can_retry": false,
-  "suggested_action": "降级为摘要提取",
+  "suggested_action": "degrade_to_summary",
   "degraded_content": "已提取目录和核心摘要"
 }
 ```
@@ -385,22 +403,11 @@ Level 3：保存标题 + 链接 + 摘要
 
 ---
 
-## 设计原则
+## 参考资料
 
-### 1. 调度与执行分离
-调度层只负责路由和管理，具体下载由平台 Skill 或通用工具执行。
-
-### 2. 最大化提取原则
-能拿完整不拿摘要，能拿原文件不拿转换格式，部分可用也输出。
-
-### 3. 容错降级机制
-下载失败不是终点，按四级降级路径逐步降低预期，尽量给用户有价值的东西。
-
-### 4. 透明反馈
-进度、成功、失败、降级，都要明确告诉用户，不隐瞒问题。
-
-### 5. 统一规范
-所有输入输出严格遵循统一元数据规范和错误码体系。
+- `references/download-methods.md` - 通用下载工具使用说明（兜底方案）
+- `references/error-codes.md` - 完整错误码体系（7类前缀+30+错误码+重试策略+降级路径）
+- `references/troubleshooting.md` - 常见下载问题排查
 
 ---
 
@@ -472,17 +479,3 @@ Level 3：保存标题 + 链接 + 摘要
 
 - 提示 flow 调用 `library-manager` 继续执行
 - 只返回 `_summary`，不在上下文中展开完整 data
-
----
-
-## 参考资料
-
-- `../resource-platforms/references/download-methods.md` - 通用下载工具使用说明（兜底方案）
-- `../shared/schemas/resource-schema.md` - 资源元数据规范
-- `../shared/schemas/error-codes.md` - 统一错误码体系
-- `../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
-- `../shared/schemas/session-io-spec.md` - 会话上下文读写规范
-- `../shared/config/platform-mapping.md` - 平台-Skill 映射表
-
----
-

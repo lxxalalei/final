@@ -94,8 +94,7 @@ description: 本地学习资料库的归档、索引维护、检索复用与去�
 
 ## 资源元数据
 
-> **元数据规范**：本 Skill 的元数据严格遵循统一规范，详见 `../shared/schemas/resource-schema.md`。
-> 以下是资料库归档阶段涉及的核心字段说明。
+> **元数据规范**：本 Skill 的元数据严格遵循统一规范。以下是资料库归档阶段涉及的核心字段说明。
 
 ### 统一资源 ID
 
@@ -779,7 +778,4 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
 ## 参考资料
 
 - `references/library-structure.md` - 资料库结构详细规范
-- `../shared/schemas/resource-schema.md` - 资源元数据完整规范
-- `../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
-- `../shared/schemas/session-io-spec.md` - 会话上下文读写规范
 - `../resource-platforms/scripts/shared/dedup.py` - 跨平台内容级去重引擎（`DedupEngine` / `DedupConfig`）

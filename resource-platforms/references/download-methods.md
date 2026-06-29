@@ -619,7 +619,7 @@ gallery-dl <图集链接>
 ## 🗺️ 平台-下载方法映射表
 
 > 本表汇总各平台支持的下载方式、工具和命令。有专属平台 Skill 的优先走平台通道，其余走通用兜底。
-> 平台映射权威定义见 `../../shared/config/platform-mapping.md`。
+> 平台映射权威定义见 `./schemas/` 目录下相关规范。
 
 ### 已接入平台（有专属 Skill）
 
@@ -770,7 +770,7 @@ yt-dlp --proxy http://proxy:port <链接>
 ## 🔍 故障排查指南
 
 > 本章节按下载方法分类，提供常见错误的排查方案。
-> 统一错误码体系见 `../../shared/schemas/error-codes.md`。
+> 统一错误码体系见 `./schemas/error-codes.md`。
 
 ### yt-dlp 通用视频下载
 
@@ -901,12 +901,11 @@ yt-dlp --proxy http://proxy:port <链接>
 
 | 文档 | 说明 |
 |------|------|
-| `../../shared/schemas/platform-download-contract.md` | 平台下载接口契约（downloader ↔ platform） |
-| `../../shared/schemas/error-codes.md` | 统一错误码体系（7 大类） |
-| `../../shared/config/platform-mapping.md` | 平台-Skill 映射表 |
-| `smartedu.md` | smartedu 平台 Skill（m3u8 下载权威实现） |
-| `douyin.md` | douyin 平台 Skill（f2 引擎权威实现） |
-| `bilibili.md` | bilibili 平台 Skill（CDP + ffmpeg 合并） |
+| `./schemas/platform-download-contract.md` | 平台下载接口契约（downloader ↔ platform） |
+| `./schemas/error-codes.md` | 统一错误码体系（7 大类） |
+| `./platforms/smartedu.md` | smartedu 平台 Skill（m3u8 下载权威实现） |
+| `./platforms/douyin.md` | douyin 平台 Skill（f2 引擎权威实现） |
+| `./platforms/bilibili.md` | bilibili 平台 Skill（CDP + ffmpeg 合并） |
 | `zhihu.md` | zhihu 平台 Skill（API → Markdown） |
 | `weibo.md` | weibo 平台 Skill（ajax → 图文下载） |
 

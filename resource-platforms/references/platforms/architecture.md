@@ -1,7 +1,7 @@
 # SmartEdu 平台架构说明
 
 > 本文档描述 `platforms/smartedu` 的整体架构、资源下载流程和错误处理策略。
-> 接口契约详见 `../../shared/schemas/platform-search-contract.md` 和 `../../shared/schemas/platform-download-contract.md`。
+> 接口契约详见 `../schemas/platform-search-contract.md` 和 `../schemas/platform-download-contract.md`。
 
 ---
 
@@ -238,7 +238,7 @@ flowchart LR
 
 ### 4.1 错误场景与处理方式
 
-所有错误码遵循 `../../shared/schemas/error-codes.md` 中的统一错误码体系。
+所有错误码遵循 `../schemas/error-codes.md` 中的统一错误码体系。
 
 #### 网络超时
 

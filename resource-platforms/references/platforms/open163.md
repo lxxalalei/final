@@ -10,7 +10,7 @@
 
 ## 标准接口
 
-接口契约详见 `platform-search-contract.md`（搜索）和 `platform-download-contract.md`（下载）。
+接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../schemas/platform-download-contract.md`（下载）。
 
 ### search(intent) → candidates ✅ 已实现
 
@@ -121,7 +121,7 @@ N万次播放
 
 ## 质量评分策略
 
-遵循 `shared/schemas/quality-rubric.md` 评分标准。网易公开课**无评分系统**，主要依据播放量和课时数：
+遵循 `../schemas/quality-rubric.md` 评分标准。网易公开课**无评分系统**，主要依据播放量和课时数：
 
 | 维度 | 评分依据 | 加分规则 |
 |------|---------|---------|
@@ -189,7 +189,6 @@ N万次播放
 
 ## 平台优势
 
-> 📖 完整优势分析见 `../../shared/config/platform-advantages.md`
 
 - **纪录片/公开课首选**：BBC 纪录片、TED 演讲、名校公开课
 - **质量高**：成体系、有深度，适合高年级科普和人文启蒙
@@ -201,13 +200,10 @@ N万次播放
 
 ## 参考资料
 
-- `../../shared/schemas/resource-schema.md` - 资源元数据规范
-- `../../shared/schemas/error-codes.md` - 统一错误码体系
-- `../../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
-- `platform-search-contract.md` - 平台搜索接口契约
-- `../../shared/schemas/quality-rubric.md` - 质量评估标准
-- `../../shared/config/platform-mapping.md` - 平台-Skill 映射表
-- `../../shared/config/platform-advantages.md` - 平台优势图谱
+- `../schemas/resource-schema.md` - 资源元数据规范
+- `../schemas/error-codes.md` - 统一错误码体系
+- `../schemas/platform-search-contract.md` - 平台搜索接口契约
+- `../schemas/quality-rubric.md` - 质量评估标准
 
 ---
 

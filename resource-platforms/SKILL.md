@@ -64,8 +64,8 @@ description: 搜索执行层。接收搜索任务清单，调度各平台脚本�
 - 检查平台状态是否可用
 - 不可用的平台跳过，记录到日志中
 
-> 📖 平台能力矩阵见：`./references/平台能力矩阵.md`
-> 📖 各平台详细文档见：`./references/{platform_id}.md`
+> 📖 平台能力矩阵见：本文件下方「平台清单」表格
+> 📖 各平台详细文档见：`./references/platforms/{platform_id}.md`
 
 **本步产出**：
 - `available_tasks`：可用的搜索任务（过滤掉不可用的平台）
@@ -134,7 +134,6 @@ description: 搜索执行层。接收搜索任务清单，调度各平台脚本�
 - `mark_and_keep_all`：标记重复但都保留
 
 > 📖 完整去重规则见：`./scripts/shared/dedup.py`
-> 📖 去重引擎文档见：`./references/去重策略说明.md`
 
 **本步产出**：
 - `deduped_results`：去重后的结果列表（数组）
@@ -362,7 +361,7 @@ description: 搜索执行层。接收搜索任务清单，调度各平台脚本�
 | ximalaya | ✅ 强 | 无需 | ⭐ | scripts/ximalaya/ |
 | open163 | ✅ 中 | 无需 | ⭐ | scripts/open163/ |
 
-> 📖 各平台详细说明见 `./references/` 下对应文档
+> 📖 各平台详细说明见 `./references/platforms/` 下对应文档
 
 ---
 
@@ -371,9 +370,9 @@ description: 搜索执行层。接收搜索任务清单，调度各平台脚本�
 - **资源元数据规范**：`./references/schemas/resource-schema.md`（统一资源格式）
 - **质量评估标准**：`./references/schemas/quality-rubric.md`（五维评分体系）
 - **错误码体系**：`./references/schemas/error-codes.md`（统一错误码）
-- **平台能力矩阵**：`./references/平台能力矩阵.md`（各平台能力概览）
-- **去重策略说明**：`./references/去重策略说明.md`（去重引擎文档）
-- **数据契约**：`./references/schemas/skill-contract.md`（阶段三→四数据契约）
-- **会话 IO 规范**：`./references/schemas/session-io-spec.md`（文件读写规范）
+- **搜索接口契约**：`./references/schemas/platform-search-contract.md`（平台搜索接口规范）
+- **下载接口契约**：`./references/schemas/platform-download-contract.md`（平台下载接口规范）
+- **各平台文档**：`./references/platforms/{platform_id}.md`（7 个平台的详细说明）
+- **下载方法详解**：`./references/download-methods.md`（通用下载方法）
 
 > 💡 参考资料放在最后，执行主流程时不需要看，需要时再查阅。

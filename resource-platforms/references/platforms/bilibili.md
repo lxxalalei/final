@@ -23,7 +23,7 @@
 
 ## 标准接口
 
-接口契约详见 `platform-search-contract.md`（搜索）和 `platform-download-contract.md`（下载）。
+接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../schemas/platform-download-contract.md`（下载）。
 
 ### search(intent) → candidates
 
@@ -147,3 +147,7 @@ python3 scripts/bilibili/bili_api.py user-videos 946974 --max 10
 1. **搜索优先用 bili_api.py** — 无需浏览器，直接 API，速度快
 2. **视频下载用 CDP 方式** — ffmpeg 合并质量更可控
 3. **脚本不可用时标记跳过** — 不阻塞其他平台
+
+---
+
+*文档版本：v1.0（resource-platforms 独立版）*

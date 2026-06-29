@@ -10,7 +10,7 @@
 
 ## 标准接口
 
-接口契约详见 `platform-search-contract.md`（搜索）和 `platform-download-contract.md`（下载）。
+接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../schemas/platform-download-contract.md`（下载）。
 
 ### search(intent) → candidates
 

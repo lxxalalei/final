@@ -317,8 +317,6 @@ description: 搜索策略生成器。接收需求理解阶段的查询指令组�
 
 - **平台优势图谱**：`./references/config/platform-advantages.md`（各平台擅长领域）
 - **平台映射表**：`./references/config/platform-mapping.md`（平台与能力映射）
-- **搜索策略详解**：`./references/搜索策略指南.md`（完整的策略制定方法）
-- **数据契约**：`./references/schemas/skill-contract.md`（阶段二→三数据契约）
-- **会话 IO 规范**：`./references/schemas/session-io-spec.md`（文件读写规范）
+- **搜索策略详解**：`./references/guides/search-strategy.md`（完整的策略制定方法）
 
 > 💡 参考资料放在最后，执行主流程时不需要看，需要时再查阅。

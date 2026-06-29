@@ -435,10 +435,6 @@ description: 儿童学习资源候选展示与用户选择 Skill，负责将搜�
 
 - `references/display-templates.md` - 展示模板详细说明
 - `references/quality-rubric.md` - 质量等级评估标准
-- `../shared/schemas/resource-schema.md` - 资源元数据规范
-- `../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
-- `../shared/schemas/session-io-spec.md` - 会话上下文读写规范
-- `../shared/config/platform-mapping.md` - 平台-Skill 映射表
 
 ---
 

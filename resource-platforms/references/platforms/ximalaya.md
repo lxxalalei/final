@@ -10,7 +10,7 @@
 
 ## 标准接口
 
-接口契约详见 `platform-search-contract.md`（搜索）和 `platform-download-contract.md`（下载）。
+接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../schemas/platform-download-contract.md`（下载）。
 
 ### search(intent) → candidates ✅ 已实现
 
@@ -136,7 +136,7 @@ GET https://apis.netstart.cn/ximalaya/search
 
 ## 质量评分策略
 
-遵循 `shared/schemas/quality-rubric.md` 五维评分标准，本平台自评逻辑：
+遵循 `../schemas/quality-rubric.md` 五维评分标准，本平台自评逻辑：
 
 | 维度 | 评分依据 | 加分规则 |
 |------|---------|---------|
@@ -221,7 +221,6 @@ GET https://apis.netstart.cn/ximalaya/search
 
 ## 平台优势
 
-> 📖 完整优势分析见 `../../shared/config/platform-advantages.md`
 
 - **音频类首选**：古诗国学、儿歌、睡前故事、英语磨耳朵
 - **内容丰富**：大量知名 IP（宝宝巴士、米小圈、凯叔讲故事等）
@@ -233,13 +232,10 @@ GET https://apis.netstart.cn/ximalaya/search
 
 ## 参考资料
 
-- `../../shared/schemas/resource-schema.md` - 资源元数据规范
-- `../../shared/schemas/error-codes.md` - 统一错误码体系
-- `../../shared/schemas/skill-contract.md` - 跨 Skill 上下文传递契约
-- `platform-search-contract.md` - 平台搜索接口契约
-- `../../shared/schemas/quality-rubric.md` - 质量评估标准
-- `../../shared/config/platform-mapping.md` - 平台-Skill 映射表
-- `../../shared/config/platform-advantages.md` - 平台优势图谱
+- `../schemas/resource-schema.md` - 资源元数据规范
+- `../schemas/error-codes.md` - 统一错误码体系
+- `../schemas/platform-search-contract.md` - 平台搜索接口契约
+- `../schemas/quality-rubric.md` - 质量评估标准
 
 ---
 

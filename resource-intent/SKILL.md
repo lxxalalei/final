@@ -308,7 +308,5 @@ description: 儿童学习资源需求理解与查询生成 Skill。接收用户�
 - **需求拆解规则**：`./references/需求拆解规则.md`（完整执行手册）
 - **澄清话术库**：`./references/澄清话术库.md`（各场景话术参考）
 - **主题扩展词表**：`./references/主题扩展词表.md`（常用主题的扩展关键词）
-- **数据契约**：`./references/schemas/skill-contract.md`（阶段一→二数据契约）
-- **会话 IO 规范**：`./references/schemas/session-io-spec.md`（文件读写规范）
 
 > 💡 参考资料放在最后，执行主流程时不需要看，需要时再查阅。
