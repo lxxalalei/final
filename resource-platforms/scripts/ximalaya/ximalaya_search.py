@@ -9,7 +9,7 @@
   - album（专辑）→ 资源类型「音频」，source_url 指向专辑页
   - track（声音）→ 资源类型「音频」，source_url 指向单条声音页
 
-输出格式遵循 shared/schemas/platform-search-contract.md 的 candidate 规范：
+输出格式遵循 resource-platforms/references/schemas/platform-search-contract.md：
   resource_id / title / source_url / platform 为必填字段。
 
 用法:
@@ -288,7 +288,7 @@ def _parse_main_doc(doc: dict[str, Any], core: str) -> dict[str, Any] | None:
     created_at = _ms_to_iso(doc.get("created_at"))
     updated_at = _ms_to_iso(doc.get("updated_at"))
 
-    # 质量评分
+    # 平台原生质量信号；最终评分由 resource-selector 统一完成。
     quality_score, quality_level = _estimate_quality(
         play_count=play_count,
         score=score,
@@ -334,8 +334,13 @@ def _parse_main_doc(doc: dict[str, Any], core: str) -> dict[str, Any] | None:
         "created_at": created_at,
         "updated_at": updated_at,
         # platform-search-contract 字段
-        "quality_level": quality_level,
-        "platform_quality_score": quality_score,
+        "platform_signals": {
+            "views": play_count,
+            "comments": comments,
+            "native_score": quality_score,
+            "native_level": quality_level,
+            "is_verified": is_verified,
+        },
         "download_feasibility": download_feasibility,
         "raw": {"core": core, "category_id": category_id},
     }

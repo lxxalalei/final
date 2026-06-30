@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search-input/v1",
+  "title": "Validated intent input for search planning",
+  "type": "object",
+  "required": ["_meta", "data"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["stage", "skill", "schema_version"],
+      "properties": {
+        "stage": {"const": 1},
+        "skill": {"const": "resource-intent"},
+        "schema_version": {"const": "intent-spec/v1"}
+      },
+      "additionalProperties": true
+    },
+    "data": {
+      "type": "object",
+      "required": ["schema_version", "status", "slots", "constraints", "search_concepts"],
+      "properties": {
+        "schema_version": {"const": "intent-spec/v1"},
+        "status": {"const": "ready"},
+        "slots": {"type": "object"},
+        "constraints": {"type": "object"},
+        "search_concepts": {"type": "object"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

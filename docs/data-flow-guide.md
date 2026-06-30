@@ -1,604 +1,247 @@
-# 数据流转操作指南
+# 六阶段数据流转指南
 
-> 本文档说明各 Skill 如何通过文件系统完成数据流转，以及每个阶段实际流转的数据内容。
->
-> **适用对象**：阅读和编写 SKILL.md 的开发者 / 审阅数据流转设计的维护者
+## 1. 总览
 
----
-
-## 目录结构
-
-每次用户请求创建一个会话目录：
-
+```text
+用户需求
+  │
+  ▼
+request.json                  flow：固化原始请求与对话证据
+  │
+  ▼
+stage1_intent.json            resource-intent：理解需求
+  │
+  ▼
+stage2_search_plan.json       resource-search：制定平台搜索计划
+  │
+  ▼
+stage3_search_results.json    resource-platforms：执行搜索并归一化原始结果
+  │
+  ▼
+stage4_selection.json         resource-selector：去重、过滤、评分、展示、选择
+  │
+  ▼
+stage5_download.json          resource-downloader：下载、重试、降级
+  │
+  ▼
+stage6_archive.json           library-manager：归档、索引、库内去重
 ```
+
+`learning-resource-flow` 负责创建会话、顺序调用、状态更新和异常恢复，不承担各阶段业务处理。
+
+## 2. 会话目录
+
+```text
 .learning-resource-work/sessions/{session_id}/
-├── manifest.json          ← flow 创建并维护（状态索引）
-├── stage1_intent.json     ← resource-intent 写入
-├── stage2_search.json     ← resource-search 写入
-├── stage3_select.json     ← resource-selector 写入
-├── stage4_download.json   ← resource-downloader 写入
-├── stage5_archive.json    ← library-manager 写入
-└── downloads/             ← 下载的文件临时存放
+├── manifest.json
+├── request.json
+├── stage1_intent.json
+├── stage2_search_plan.json
+├── stage3_search_results.json
+├── stage4_selection.json
+├── stage5_download.json
+├── stage6_archive.json
+└── downloads/
 ```
 
-- session_id 命名：`{日期}-{时间}-{主题英文缩写}`，如 `20260626-1441-math-grade3`
-- 所有会话平铺在 `sessions/` 下，不按对话分组
+所有阶段使用绝对 `session_dir`，只通过文件传递完整数据。Flow 先把原始请求和相关对话证据写入 `request.json`；对话上下文只保留各阶段 `_summary`。
 
----
+## 3. 统一文件包装
 
-## 文件三层包装
-
-每个 stage 文件统一用三层结构：
-
-```
-┌─────────────────────────────────┐
-│  _meta    元数据（阶段号/Skill名/时间/上游来源）   │
-├─────────────────────────────────┤
-│  _summary  摘要（≤50字，flow 只读这个）          │
-├─────────────────────────────────┤
-│  data      完整业务数据（下游 Skill 读这个）      │
-└─────────────────────────────────┘
-```
-
-- **flow** 只读每个文件的 `_summary`，不读 `data`
-- **下游 Skill** 读上游文件的 `data`，写入自己的 `data`
-- **上下文** 中只保留 session_id + 当前阶段 + 各阶段 summary
-
----
-
-## 各 Skill 操作详解
-
-### flow（总调度）— 创建会话 + 调度阶段
-
-#### 操作 1：创建会话
-
-收到新需求时：
-
-```
-1. 生成 session_id：{日期}-{时间}-{主题英文缩写}
-2. 创建目录：.learning-resource-work/sessions/{session_id}/
-3. 创建子目录：downloads/
-4. 写入 manifest.json
-```
-
-manifest.json 内容：
-
-```json
-{
-  "session_id": "20260626-1441-math-grade3",
-  "user_request": "帮我找三年级数学练习题",
-  "status": "in_progress",
-  "current_stage": 1,
-  "stages": {
-    "stage1": {"status": "pending", "output": "stage1_intent.json"},
-    "stage2": {"status": "pending", "output": "stage2_search.json"},
-    "stage3": {"status": "pending", "output": "stage3_select.json"},
-    "stage4": {"status": "pending", "output": "stage4_download.json"},
-    "stage5": {"status": "pending", "output": "stage5_archive.json"}
-  }
-}
-```
-
-#### 操作 2：调度每个阶段（stage 1→5 循环）
-
-```
-对每个阶段：
-  1. 更新 manifest.json → 当前阶段标记为 in_progress
-  2. 调用对应 Skill，传递：会话目录路径、上游文件名、输出文件名
-  3. Skill 返回后 → 只读输出文件的 _summary（前几行）
-  4. 更新 manifest.json → 当前阶段标记为 completed，回填 summary
-  5. 根据 summary 决定下一步
-```
-
-#### 操作 3：需求类型判断
-
-| 用户说的 | 处理方式 |
-|---------|---------|
-| 新的搜索/下载主题 | 创建新会话，从阶段一开始 |
-| "刚才那个""加选几个" | 复用当前 session_id，从指定阶段继续 |
-| "我之前存的""上次下载的" | 调用 library-manager 查资料库（不碰 sessions/） |
-| "继续上次没下完的" | 列出 sessions/ 目录让用户选，从中断处继续 |
-
-> 搜索结果是时效性数据，每次新需求都重新搜索，不复用旧结果。
-
----
-
-### 阶段一：resource-intent（需求理解）
-
-#### 流转关系
-
-```
-用户自然语言需求
-       │
-       ▼
-  resource-intent
-       │
-       ▼ 写入
-  stage1_intent.json
-       │
-       ▼ data 被下游读取
-  resource-search
-```
-
-#### 操作步骤
-
-```
-1. 从 flow 参数获取：会话目录 {session_dir}、输出文件名（stage1_intent.json）
-   —— 本阶段无上游文件
-2. 阅读用户原始需求，生成分级查询列表，做出的假设写入 assumptions
-3. 写入结果文件
-4. 提示 flow 调用 resource-search，只返回 _summary
-```
-
-#### 流转数据：stage1_intent.json
+每个阶段文件都使用三层包装：
 
 ```json
 {
   "_meta": {
     "stage": 1,
-    "session_id": "{session_id}",
+    "session_id": "20260630-1030-math-grade3",
     "skill": "resource-intent",
-    "created_at": "ISO时间",
-    "input_from": null
+    "created_at": "2026-06-30T10:30:00+08:00",
+    "input_from": "request.json",
+    "schema_version": "intent-spec/v1"
   },
-  "_summary": {
-    "core_topic": "核心主题",
-    "query_count": 3,
-    "target_age": "8-9岁",
-    "search_mode": "standard"
-  },
-  "data": {
-    "summary": "一句话需求总结",
-    "core_topic": "核心主题",
-    "queries": [
-      {"text": "查询关键词", "tier": "core/official/format/longtail", "format_hint": "视频/音频/文档/图文"}
-    ],
-    "target_age": "目标年龄范围",
-    "grade_level": "年级",
-    "difficulty": "入门/进阶/系统",
-    "format_preferences": ["视频", "文档"],
-    "source_preference": "不限/官方优先/视频平台优先",
-    "search_mode": "standard / exhaustive",
-    "assumptions": ["假设1", "假设2"]
-  }
+  "_summary": {},
+  "data": {}
 }
 ```
 
-| 层 | 谁读 | 内容 |
-|----|------|------|
-| `_summary` | flow | 核心主题、查询数量、目标年龄、搜索模式 |
-| `data` | resource-search | 需求总结、核心主题、查询列表、年龄/年级/难度、偏好、假设清单 |
+- `_meta`：来源、阶段和时间。
+- `_summary`：flow 用于调度的精简信息。
+- `data`：下游 Skill 使用的完整数据。
 
----
+下游处理资源时遵循“只增不删”：除明确执行筛选的 stage 4 外，已有资源字段原样透传，新阶段只追加本阶段字段。Stage 4 可以移除未入选资源，但所选资源的字段不得裁剪。
 
-### 阶段二：resource-search（搜索调度）
+## 4. Stage 1：需求理解
 
-#### 流转关系
+**Skill**：`resource-intent`
 
-```
-  stage1_intent.json 的 data
-       │
-       ▼ 读取 queries 列表
-  resource-search
-       │
-       ├──→ 调度 resource-platforms（各平台搜索）
-       │
-       ▼ 汇总写入
-  stage2_search.json
-       │
-       ▼ data 被下游读取
-  resource-selector
+**输入**：`request.json`（`request/v1`），包含 `raw_request`、`conversation_evidence` 和 `user_confirmed_facts`。
+
+该文件由 Flow 创建，不由用户或 Intent 创建。Flow 必须原样保存当前用户需求，写入后运行：
+
+```bash
+python3 learning-resource-flow/scripts/validate_request.py {session_dir}/request.json
 ```
 
-#### 操作步骤
+校验通过后才能调用 Intent。
 
-```
-1. 从 flow 参数获取：会话目录 {session_dir}、上游文件名（stage1_intent.json）、输出文件名（stage2_search.json）
-2. 读取 stage1_intent.json 的 data 部分，提取 queries 列表和搜索参数
-3. 分发查询给各平台搜索，汇总去重后写入结果文件
-4. 提示 flow 调用 resource-selector，只返回 _summary
-```
+**输出**：`stage1_intent.json`
 
-#### 流转数据：stage2_search.json
+`data` 使用 `intent-spec/v1`，主要字段为：
+
+- `slots`：每个槽位包含 value、explicit/inferred/defaulted/unknown 状态、置信度和证据；资料语义分别使用 `resource_types`（资料大类）、`format_preferences`（具体内容形态）和 `file_formats`（实际文件格式）。
+- `constraints`：must、prefer、exclude。
+- `search_concepts`：规范概念和同义词，不是可执行查询。
+- `ambiguities`、`clarification`、`assumptions`。
+
+本阶段不生成查询、不决定平台、不执行搜索。Intent 通过 `_summary.clarification_question` 把单个问题交还 Flow；Flow 将问题和用户回答依次追加到 `conversation_evidence`，等待期间把 stage 1 标记为 `waiting_user`，更新并校验 request.json 后重跑 Intent。
+
+用户未指定资料类型或文件格式时，对应槽位保持 unknown；Intent 不默认视频、图文或文档，具体多形态覆盖由 Stage 2 决定。
+
+## 5. Stage 2：搜索计划
+
+**Skill**：`resource-search`
+
+**输入**：`stage1_intent.json`
+
+**输出**：`stage2_search_plan.json`
+
+`data` 主要字段：
 
 ```json
 {
-  "_meta": {
-    "stage": 2,
-    "session_id": "{session_id}",
-    "skill": "resource-search",
-    "created_at": "ISO时间",
-    "input_from": "stage1_intent.json"
-  },
-  "_summary": {
-    "total_count": 22,
-    "platforms_searched": ["bilibili", "ximalaya", "smartedu"],
-    "quality_dist": {"S": 3, "A": 8, "B": 8, "C": 3}
-  },
-  "data": {
-    "total_count": 22,
-    "search_summary": "查询3组/平台4个/召回85条/初筛后40条/去重后22条",
-    "resources": [
-      {
-        "resource_id": "平台名:平台内ID",
-        "title": "资源标题",
-        "type": "视频/音频/文档/练习题/绘本/课件/图片",
-        "subject": "学科/领域",
-        "platform": "bilibili",
-        "source_url": "来源URL",
-        "source_name": "B站",
-        "quality_level": "S/A/B/C",
-        "download_feasibility": "高/中/低",
-        "platform_quality_score": 85,
-        "description": "内容简介",
-        "age_range": "适龄范围",
-        "grade_level": "适用年级",
-        "tags": ["标签1"],
-        "view_count": 5000000,
-        "duration": "时长/集数",
-        "language": "中文"
-      }
-    ]
-  }
+  "schema_version": "search-plan/v1",
+  "intent_ref": "stage1_intent.json",
+  "strategy": "官方同步练习为主，视频讲解与全网长尾补充",
+  "search_tasks": [
+    {
+      "task_id": "task-smartedu-primary",
+      "platform": "smartedu",
+      "priority": "P0",
+      "reason": "用户需要三年级同步练习并偏好官方来源",
+      "searches": [
+        {
+          "query": "小学三年级 数学 同步练习",
+          "max_results": 20,
+          "params": {}
+        }
+      ]
+    }
+  ]
 }
 ```
 
-| 层 | 谁读 | 内容 |
-|----|------|------|
-| `_summary` | flow | 候选总数、搜索过的平台、质量分布 |
-| `data` | resource-selector | 候选资源列表 |
+本阶段只决定平台、关键词、单次返回数量和平台真实支持的参数，不执行平台请求，也不对结果评分。
 
-data.resources[] 字段说明：
+## 6. Stage 3：平台搜索执行
 
-| 字段 | 必须 | 说明 |
-|------|:----:|------|
-| `resource_id` | ✅ | 唯一标识，格式 `平台名:平台内ID` |
-| `title` | ✅ | 资源标题 |
-| `type` | ✅ | 资源类型（视频/音频/文档/练习题/绘本/课件/图片） |
-| `subject` | ✅ | 学科/领域 |
-| `platform` | ✅ | 平台标识（bilibili/ximalaya/smartedu 等） |
-| `source_url` | ✅ | 来源URL |
-| `source_name` | ✅ | 平台显示名（B站/喜马拉雅 等） |
-| `quality_level` | ✅ | 质量等级 S/A/B/C |
-| `download_feasibility` | ✅ | 下载可行性 高/中/低 |
-| `platform_quality_score` | ⚠️ | 平台自评分 0-100 |
-| `description` | ⚠️ | 内容简介 |
-| `age_range` | ⚠️ | 适龄范围 |
-| `grade_level` | ⚠️ | 适用年级 |
-| `tags` | ⚠️ | 标签数组 |
-| `view_count` | ⚠️ | 播放/浏览量 |
-| `duration` | ⚠️ | 时长/集数 |
-| `language` | ⚠️ | 语言 |
+**Skill**：`resource-platforms`，search 模式。
 
----
+**输入**：`stage2_search_plan.json`
 
-### 阶段三：resource-selector（候选展示与用户选择）
+**输出**：`stage3_search_results.json`
 
-#### 流转关系
+允许执行：
 
-```
-  stage2_search.json 的 data
-       │
-       ▼ 读取候选列表 → 展示给用户
-  resource-selector
-       │
-       ▼ 用户选择后写入
-  stage3_select.json
-       │
-       ▼ data 被下游读取
-  resource-downloader
-```
+- 平台请求和认证。
+- 限速、重试和断路器。
+- 响应解析及统一字段归一化。
+- 剔除缺少资源 ID、标题或来源地址的技术无效记录。
+- 同平台、同 ID 的完全重复响应合并。
 
-#### 操作步骤
+禁止执行：
 
-```
-1. 从 flow 参数获取：会话目录 {session_dir}、上游文件名（stage2_search.json）、输出文件名（stage3_select.json）
-2. 读取 stage2_search.json 的 data 部分，提取候选资源列表展示给用户
-3. 用户确认选择后写入结果文件
-4. 提示 flow 调用 resource-downloader，只返回 _summary
-```
+- 跨平台相似内容去重。
+- 相关性、安全、语言、付费和质量过滤。
+- 全局质量评分和最终排序。
 
-#### 流转数据：stage3_select.json
+输出 `data.resources` 是归一化原始结果，同时原样透传 `intent_context`，并保留 `platform_stats` 和 `errors`。平台热度或自评写入 `platform_signals`，不是最终质量等级。
+
+## 7. Stage 4：筛选与选择
+
+**Skill**：`resource-selector`
+
+**输入**：`stage3_search_results.json`
+
+**输出**：`stage4_selection.json`
+
+按以下顺序处理：
+
+1. 跨平台去重和相似资源合并。
+2. 相关性、儿童安全、可用性、语言和费用过滤。
+3. 使用 selector 自有质量规范统一评分和 S/A/B/C 定级。
+4. 按质量、适龄性和下载可行性排序。
+5. 分批展示候选并等待用户确认。
+6. 将确认资源写入 `data.resources`。
+
+`_summary` 至少包含：
 
 ```json
 {
-  "_meta": {
-    "stage": 3,
-    "session_id": "{session_id}",
-    "skill": "resource-selector",
-    "created_at": "ISO时间",
-    "input_from": "stage2_search.json"
-  },
-  "_summary": {
-    "selected_count": 5,
-    "selection_mode": "manual",
-    "by_platform": {"bilibili": 2, "ximalaya": 3}
-  },
-  "data": {
-    "selected_count": 5,
-    "selection_mode": "manual / all / by_type / by_quality",
-    "resources": [
-      {
-        "// 说明": "保留 stage2 中该资源的全部字段",
-        "resource_id": "...",
-        "title": "...",
-        "type": "...",
-        "subject": "...",
-        "platform": "...",
-        "source_url": "...",
-        "source_name": "...",
-        "quality_level": "...",
-        "download_feasibility": "...",
-        "...": "（stage2 的所有字段原样保留）"
-      }
-    ]
+  "raw_count": 72,
+  "candidate_count": 22,
+  "selected_count": 5,
+  "selection_mode": "manual",
+  "quality_dist": {"S": 3, "A": 8, "B": 9, "C": 2},
+  "filter_stats": {
+    "duplicates_removed": 12,
+    "business_filtered": 38
   }
 }
 ```
 
-| 层 | 谁读 | 内容 |
-|----|------|------|
-| `_summary` | flow | 选中数量、选择方式、平台分布 |
-| `data` | resource-downloader | 用户选中的资源列表 |
+这是搜索链路中唯一负责业务筛选的阶段。
 
-**保留规则**：selector 只做筛选不做裁剪。用户没选的资源不写，但保留的每个资源要带过来 stage2 的全部字段，一个字段都不能删。
+## 8. Stage 5：下载
 
----
+**Skill**：`resource-downloader`
 
-### 阶段四：resource-downloader（下载调度）
+**输入**：`stage4_selection.json`
 
-#### 流转关系
+**输出**：`stage5_download.json`
 
-```
-  stage3_select.json 的 data
-       │
-       ▼ 读取选中资源列表
-  resource-downloader
-       │
-       ├──→ 调度 resource-platforms（平台下载）/ 通用工具
-       │
-       │     下载文件 → {session_dir}/downloads/
-       │
-       ▼ 写入结果
-  stage4_download.json
-       │
-       ▼ data 被下游读取
-  library-manager
-```
+Downloader 根据资源的 `platform` 调用 `resource-platforms` 下载模式；没有专属下载能力时使用通用方式。负责：
 
-#### 操作步骤
+- 路由、进度、重试和错误汇总。
+- Level 0-3 降级。
+- 将文件写入 `{session_dir}/downloads/`。
+- 保留失败资源及其错误，不从输出中删除。
 
-```
-1. 从 flow 参数获取：会话目录 {session_dir}、上游文件名（stage3_select.json）、输出文件名（stage4_download.json）
-2. 读取 stage3_select.json 的 data 部分，提取用户选中的资源列表
-3. 按平台分组下载，文件存入 {session_dir}/downloads/，下载完成后写入结果文件
-4. 提示 flow 调用 library-manager，只返回 _summary
-```
+每条资源追加 `download_status`、`degraded_level`、`file_path`、`file_size`、`fetch_time` 和错误字段。
 
-#### 流转数据：stage4_download.json
+## 9. Stage 6：归档
 
-```json
-{
-  "_meta": {
-    "stage": 4,
-    "session_id": "{session_id}",
-    "skill": "resource-downloader",
-    "created_at": "ISO时间",
-    "input_from": "stage3_select.json"
-  },
-  "_summary": {
-    "total_count": 5,
-    "success_count": 3,
-    "degraded_count": 1,
-    "failed_count": 1
-  },
-  "data": {
-    "total_count": 5,
-    "success_count": 3,
-    "degraded_count": 1,
-    "failed_count": 1,
-    "resources": [
-      {
-        "// 说明": "保留 stage3 全部字段 + 新增下载结果字段",
-        "resource_id": "...",
-        "title": "...",
-        "platform": "...",
-        "source_url": "...",
-        "...": "（stage3 的所有字段原样保留）",
+**Skill**：`library-manager`
 
-        "download_status": "success / degraded / failed",
-        "degraded_level": "Level 0 / Level 1 / Level 2 / Level 3",
-        "file_path": "{session_dir}/downloads/xxx.mp4",
-        "file_size": 156000000,
-        "fetch_time": "2026-06-26T15:00:00+08:00",
-        "fetch_method": "获取方式说明",
+**输入**：`stage5_download.json`
 
-        "// 失败/降级时额外字段": "",
-        "error_code": "NETWORK_TIMEOUT / CONTENT_PREMIUM_ONLY / ...",
-        "error_message": "错误信息",
-        "degraded_content": "降级内容说明",
-        "alternative_recommendations": []
-      }
-    ]
-  }
-}
-```
+**输出**：`stage6_archive.json`
 
-| 层 | 谁读 | 内容 |
-|----|------|------|
-| `_summary` | flow | 总数、成功/降级/失败各多少 |
-| `data` | library-manager | 每个资源在上游字段基础上新增下载结果 |
+负责资料库内去重、文件移动、分类、索引和元数据更新。这里的去重用于避免资料库重复入库，与 stage 4 的“候选列表去重”目的不同，二者都需要保留。
 
-data 新增字段（下载阶段独有）：
+每条资源追加 `library_path`、`archive_time` 和 `dedup_status`。
 
-| 字段 | 必须 | 说明 |
-|------|:----:|------|
-| `download_status` | ✅ | success / degraded / failed |
-| `degraded_level` | ✅ | Level 0（完整）/ Level 1（预览）/ Level 2（摘要）/ Level 3（仅链接） |
-| `file_path` | ⚠️ | 本地路径（成功时） |
-| `file_size` | ⚠️ | 文件大小，字节（成功时） |
-| `fetch_time` | ⚠️ | 获取时间 ISO |
-| `fetch_method` | ⚠️ | 获取方式 |
-| `error_code` | ⚠️ | 错误码（失败时，遵循 error-codes.md） |
-| `error_message` | ⚠️ | 错误信息（失败时） |
-| `degraded_content` | ⚠️ | 降级内容说明（降级时） |
-| `alternative_recommendations` | ⚠️ | 替代推荐（失败时） |
+## 10. 调用责任
 
-**保留规则**：上游全部字段原样带过来；`failed` 的资源也要写进文件。
+| 调用方 | 被调用方 | 场景 |
+|---|---|---|
+| learning-resource-flow | resource-intent | stage 1 |
+| learning-resource-flow | resource-search | stage 2 |
+| learning-resource-flow | resource-platforms search | stage 3 |
+| learning-resource-flow | resource-selector | stage 4 |
+| learning-resource-flow | resource-downloader | stage 5 |
+| resource-downloader | resource-platforms download | stage 5 内部 |
+| learning-resource-flow | library-manager | stage 6 |
 
----
+`resource-search` 不直接调用平台脚本。这样 flow 能准确持久化 stage 2 与 stage 3 的独立状态，并在平台搜索失败时单独恢复。
 
-### 阶段五：library-manager（归档入库）
+## 11. 重跑规则
 
-#### 流转关系
+- 重跑 stage 1：stage 2-6 全部失效。
+- 重跑 stage 2：stage 3-6 全部失效。
+- 重跑 stage 3：stage 4-6 全部失效。
+- 仅查看更多或改变筛选条件：复用 stage 3，重跑 stage 4。
+- 重试下载：复用 stage 4，重跑 stage 5，并使 stage 6 失效。
+- 重试归档：复用 stage 5，仅重跑 stage 6。
 
-```
-  stage4_download.json 的 data
-       │
-       ▼ 读取下载结果列表
-  library-manager
-       │
-       ├──→ 归档前去重检查（DedupEngine）
-       ├──→ 文件移动 downloads/ → 学习资料库/
-       ├──→ 更新索引 index.json
-       │
-       ▼ 写入结果
-  stage5_archive.json
-       │
-       ▼ data 被 flow 读取生成最终报告
-  flow → 汇总报告给用户
-```
-
-#### 操作步骤
-
-```
-1. 从 flow 参数获取：会话目录 {session_dir}、上游文件名（stage4_download.json）、输出文件名（stage5_archive.json）
-2. 读取 stage4_download.json 的 data 部分，提取下载结果列表
-3. 执行归档前去重 → 文件移动 → 索引更新，完成后写入结果文件
-4. 提示 flow 生成最终汇总报告，只返回 _summary
-```
-
-#### 流转数据：stage5_archive.json
-
-```json
-{
-  "_meta": {
-    "stage": 5,
-    "session_id": "{session_id}",
-    "skill": "library-manager",
-    "created_at": "ISO时间",
-    "input_from": "stage4_download.json"
-  },
-  "_summary": {
-    "archived_count": 3,
-    "skipped_count": 1,
-    "dedup_stats": {"new": 3, "duplicate": 1}
-  },
-  "data": {
-    "archived_count": 3,
-    "skipped_count": 1,
-    "resources": [
-      {
-        "// 说明": "保留 stage4 全部字段 + 新增归档字段",
-        "resource_id": "...",
-        "title": "...",
-        "platform": "...",
-        "download_status": "...",
-        "...": "（stage4 的所有字段原样保留）",
-
-        "library_path": "学习资料库/数学/小学三年级/四则混合运算/",
-        "archive_time": "2026-06-26T16:00:00+08:00",
-        "dedup_status": "new / duplicate / skipped"
-      }
-    ]
-  }
-}
-```
-
-| 层 | 谁读 | 内容 |
-|----|------|------|
-| `_summary` | flow | 归档成功数、跳过数、去重统计 |
-| `data` | flow（生成汇总报告） | 每个资源在上游字段基础上新增归档信息 |
-
-data 新增字段（归档阶段独有）：
-
-| 字段 | 必须 | 说明 |
-|------|:----:|------|
-| `library_path` | ✅ | 资料库内路径 |
-| `archive_time` | ✅ | 归档时间 ISO |
-| `dedup_status` | ⚠️ | new（新资源）/ duplicate（重复标记）/ skipped（跳过归档） |
-
-**保留规则**：上游全部字段（含 download_status/file_path 等）原样带过来，flow 最终汇总报告依赖这些字段。
-
----
-
-## 全链路数据累积一览
-
-数据沿管道单向流动，每个阶段只增不删：
-
-```
-stage1 (intent)
-  │  data: summary, core_topic, queries[], target_age, grade_level,
-  │        difficulty, format_preferences, source_preference,
-  │        search_mode, assumptions[]
-  │
-  ▼  +搜索结果
-stage2 (search)
-  │  data: total_count, search_summary, resources[]
-  │  resources[] 新增: resource_id, title, type, subject, platform,
-  │                   source_url, source_name, quality_level,
-  │                   download_feasibility, (+ 可选元数据 8 个字段)
-  │
-  ▼  筛选（不增字段，只做过滤）
-stage3 (select)
-  │  data: selected_count, selection_mode, resources[]
-  │  resources[]: 同 stage2（选中的子集，字段不变）
-  │
-  ▼  +下载结果
-stage4 (download)
-  │  data: total/success/degraded/failed_count, resources[]
-  │  resources[] 新增: download_status, degraded_level, file_path,
-  │                   file_size, fetch_time, fetch_method,
-  │                   (+ error_code/error_message/degraded_content/
-  │                     alternative_recommendations)
-  │
-  ▼  +归档信息
-stage5 (archive)
-     data: archived_count, skipped_count, resources[]
-     resources[] 新增: library_path, archive_time, dedup_status
-```
-
-到 stage5 结束时，每个资源对象累积了从 intent 到 archive 的完整生命周期数据，flow 据此生成最终汇总报告。
-
----
-
-## 文件目录实体流转
-
-除了 JSON 数据文件，还有实际文件的流转：
-
-```
-                         互联网资源
-                             │
-                    ┌────────▼────────┐
-                    │  downloader 下载  │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────────────┐
-                    │ {session_dir}/downloads/ │  ← 临时存放
-                    └────────┬────────────────┘
-                             │
-                    ┌────────▼────────┐
-                    │ library 归档移动 │
-                    └────────┬────────┘
-                             │
-              ┌──────────────▼──────────────┐
-              │     学习资料库/               │
-              │   ├── 数学/小学三年级/...     │  ← 正式资料库
-              │   ├── 语文/小学一年级/...     │
-              │   └── .library/index.json    │  ← 索引文件
-              └─────────────────────────────┘
-```
-
----
-
-*文档版本：v1.0 | 最后更新：2026-06-26*
+失效阶段在 manifest 中重置为 `pending`，旧文件不得作为新结果继续流转。

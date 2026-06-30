@@ -7,7 +7,7 @@ description: 儿童学习资源下载调度器 Skill，负责根据资源平台�
 
 ## 概述
 
-本 Skill 是三层架构中的**业务能力层**，负责下载任务的调度与管理。
+本 Skill 是流水线 **stage 5**，负责下载任务的调度与管理。
 它不直接执行具体下载，而是根据资源的平台、类型，调度对应的平台 Skill 或通用下载工具。
 
 **上游**：resource-selector（候选展示与用户选择）
@@ -107,13 +107,14 @@ description: 儿童学习资源下载调度器 Skill，负责根据资源平台�
 
 | 平台 | Skill 路径 | Skill 状态 | 说明 |
 |------|-----------|-----------|------|
-| bilibili | `../resource-platforms/references/bilibili.md` | ✅ 可用 | B站专属，搜索+下载+反爬 |
-| ximalaya | `../resource-platforms/references/ximalaya.md` | ✅ 可用（搜索） | 喜马拉雅专属，音频下载 |
-| smartedu | `../resource-platforms/references/smartedu.md` | ✅ 可用 | 国家中小学智慧教育平台 |
+| bilibili | `../resource-platforms/references/platforms/bilibili.md` | ✅ 可用 | B站专属，搜索+下载+反爬 |
+| ximalaya | `../resource-platforms/references/platforms/ximalaya.md` | ⚠️ 仅搜索 | 下载走通用方式或降级 |
+| smartedu | `../resource-platforms/references/platforms/smartedu.md` | ✅ 可用 | 国家中小学智慧教育平台 |
 | baiduwenku | `platform-baiduwenku` | 规划中 | 百度文库文档下载 |
-| zhihu | `../resource-platforms/references/zhihu.md` | ✅ 可用 | 知乎图文提取 |
-| douyin | `../resource-platforms/references/douyin.md` | ✅ 可用 | 抖音专属，f2引擎搜索+无水印下载 |
-| weibo | `../resource-platforms/references/weibo.md` | ✅ 可用 | 微博专属，ajax搜索+用户图文下载 |
+| zhihu | `../resource-platforms/references/platforms/zhihu.md` | ✅ 可用 | 知乎图文提取 |
+| douyin | `../resource-platforms/references/platforms/douyin.md` | ✅ 可用 | 抖音专属，f2 引擎搜索+无水印下载 |
+| weibo | `../resource-platforms/references/platforms/weibo.md` | ✅ 可用 | 微博专属，ajax 搜索+用户图文下载 |
+| open163 | `../resource-platforms/references/platforms/open163.md` | ⚠️ 仅搜索 | 下载走通用方式或降级 |
 
 > 注：标记「✅ 可用」的平台已接入，优先走平台专属通道；其余走通用兜底通道。
 
@@ -414,24 +415,24 @@ Level 3：保存标题 + 链接 + 摘要
 ## 读写文件
 
 ### 1. 获取任务路径
-- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage3_select.json`）、输出文件名（通常 `stage4_download.json`）
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage4_selection.json`）、输出文件名（通常 `stage5_download.json`）
 
 ### 2. 读取上游数据
-- 读取 `{session_dir}/stage3_select.json` 的 `data` 部分
+- 读取 `{session_dir}/stage4_selection.json` 的 `data` 部分
 - 提取用户选中的资源列表
 
 ### 3. 执行下载并写入结果
 
-下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将以下结构写入 `{session_dir}/stage4_download.json`：
+下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将以下结构写入 `{session_dir}/stage5_download.json`：
 
 ```json
 {
   "_meta": {
-    "stage": 4,
+    "stage": 5,
     "session_id": "{session_id}",
     "skill": "resource-downloader",
     "created_at": "ISO时间",
-    "input_from": "stage3_select.json"
+    "input_from": "stage4_selection.json"
   },
   "_summary": {
     "total_count": 5,
@@ -446,12 +447,12 @@ Level 3：保存标题 + 链接 + 摘要
     "failed_count": 1,
     "resources": [
       {
-        "// 说明": "保留 stage3 全部字段 + 新增下载结果字段",
+        "// 说明": "保留 stage4 全部字段 + 新增下载结果字段",
         "resource_id": "...",
         "title": "...",
         "platform": "...",
         "source_url": "...",
-        "...": "（stage3 的所有字段原样保留）",
+        "...": "（stage4 的所有字段原样保留）",
 
         "download_status": "success / degraded / failed",
         "degraded_level": "Level 0 / Level 1 / Level 2 / Level 3",

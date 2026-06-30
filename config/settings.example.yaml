@@ -29,7 +29,7 @@ defaults:
 
 
 # ── 平台专属配置（覆盖 defaults） ────────────────────────────────
-#  未列出的字段继承 defaults。完整平台列表见 shared/config/platform-mapping.md。
+#  未列出的字段继承 defaults。完整平台列表见 resource-platforms/config/platform-registry.json。
 platforms:
 
   bilibili:
@@ -97,12 +97,17 @@ log:
 search:
   default_max_results: 20          # 单平台默认最大返回数
   max_results_per_platform: 50     # 多平台并行时上限
-  dedup_enabled: true              # 是否启用跨平台去重
   search_timeout: 120              # 搜索超时（秒）
+
+selector:
+  cross_platform_dedup_enabled: true  # 候选跨平台去重由 selector 执行
+  business_filter_enabled: true       # 相关性/安全/语言/费用过滤
+  default_display_limit: 20           # 标准模式首次展示数量
 
 
 # ── 去重设置（归档入库前 + 资料库整理） ─────────────────────────
-#  去重引擎实现：shared/dedup.py（DedupEngine）
+#  本节用于归档入库前和资料库整理；候选去重见 selector 配置。
+#  当前实现：resource-platforms/scripts/shared/dedup.py（历史位置）
 #  策略文档：library-manager/SKILL.md → 跨平台内容级去重
 dedup:
   enabled: true                          # 总开关

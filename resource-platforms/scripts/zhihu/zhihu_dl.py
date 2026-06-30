@@ -436,7 +436,7 @@ def question_to_markdown(question_id: str, answers: list[dict[str, Any]], page_t
 def download(url: str, output_dir: str, cookie: str | None = None) -> dict[str, Any]:
     """下载知乎内容并导出为 Markdown。
 
-    返回标准下载结果（符合 shared/schemas/platform-download-contract.md 的 download 接口输出）。
+    返回标准下载结果（符合 resource-platforms/references/schemas/platform-download-contract.md）。
     """
     parsed = parse_url(url)
     output_dir = Path(output_dir)

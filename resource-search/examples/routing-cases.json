@@ -1,0 +1,95 @@
+{
+  "schema_version": "search-routing-golden/v1",
+  "cases": [
+    {
+      "id": "official-textbook",
+      "intent": "小学三年级数学人教版同步练习，优先官方",
+      "expect": {"required_platforms": ["smartedu", "generic"], "query_angles": ["年级学科版本", "同步练习"]}
+    },
+    {
+      "id": "audio-commute",
+      "intent": "路上听的古诗朗诵",
+      "expect": {"required_platforms": ["ximalaya", "generic"], "query_angles": ["朗诵", "音频专辑", "通勤听"]}
+    },
+    {
+      "id": "no-video",
+      "intent": "不要视频，找二年级阅读理解材料",
+      "expect": {"forbidden_platforms": ["bilibili", "douyin", "open163"], "required_platforms": ["generic"]}
+    },
+    {
+      "id": "science-mixed",
+      "intent": "适合10岁孩子的天文科普，视频和深度课程都可以",
+      "expect": {"required_platforms": ["bilibili", "generic"], "optional_platforms": ["open163"], "query_angles": ["动画讲解", "纪录片或课程"]}
+    },
+    {
+      "id": "learning-method",
+      "intent": "孩子做应用题没有思路，想找方法讲解",
+      "expect": {"required_platforms": ["bilibili", "zhihu", "generic"], "query_angles": ["解题过程", "怎么教", "方法经验"]}
+    },
+    {
+      "id": "short-demonstration",
+      "intent": "找几个乘法口诀快速记忆的小技巧短视频",
+      "expect": {"required_platforms_any": ["douyin", "bilibili"], "query_angles": ["快速记忆技巧", "短示范"]}
+    },
+    {
+      "id": "must-free",
+      "intent": "只要免费的英语启蒙资源",
+      "expect": {"generic_query_terms": ["免费"], "note": "平台不支持免费参数时不虚构参数，由 Selector 核验"}
+    },
+    {
+      "id": "planned-platform-request",
+      "intent": "想去百度文库找可打印课件",
+      "expect": {"forbidden_platforms": ["baiduwenku"], "required_platforms": ["generic"], "query_angles": ["site 定向或课件搜索"]}
+    },
+    {
+      "id": "standard-narrow",
+      "intent": "推荐几个小学古诗动画",
+      "expect": {"required_platforms": ["bilibili", "generic"], "search_mode": "standard", "note": "窄需求不必凑满平台"}
+    },
+    {
+      "id": "exhaustive-broad",
+      "intent": "尽量全面找儿童情绪管理资源",
+      "expect": {"search_mode": "exhaustive", "minimum_platforms": 3, "minimum_query_angles": 5}
+    },
+    {
+      "id": "download-unavailable-not-search-unavailable",
+      "intent": "儿童故事音频",
+      "expect": {"required_platforms": ["ximalaya", "generic"], "note": "下载能力不影响搜索选择"}
+    },
+    {
+      "id": "generic-search-mandatory",
+      "intent": "找可打印的科普活动方案",
+      "expect": {"required_platforms": ["generic"], "generic_engines": ["baidu", "bing"]}
+    },
+    {
+      "id": "general-primary-poetry",
+      "intent": "小学古诗学习",
+      "expect": {"required_platforms": ["ximalaya", "bilibili", "generic"], "query_angles": ["朗诵跟读", "动画赏析", "原文注释译文"], "forbid_automatic_dimensions": ["具体年级", "教材版本"]}
+    },
+    {
+      "id": "curriculum-primary-poetry",
+      "intent": "三年级语文上册古诗同步复习",
+      "expect": {"required_platforms": ["smartedu", "generic"], "query_angles": ["三年级语文上册", "同步复习"]}
+    },
+    {
+      "id": "open-form-dinosaur",
+      "intent": "找儿童恐龙科普，什么形式都可以",
+      "expect": {"required_platforms": ["bilibili", "generic"], "query_angles": ["动画", "灭绝原因", "博物馆或百科"]}
+    },
+    {
+      "id": "printable-not-pdf",
+      "intent": "找可打印的三年级数学练习题",
+      "expect": {"generic_query_terms": ["可打印"], "forbidden_inferred_terms": ["filetype:pdf"]}
+    },
+    {
+      "id": "explicit-pdf",
+      "intent": "找三年级数学PDF试卷",
+      "expect": {"required_platforms": ["generic"], "generic_query_operators": ["filetype:pdf"]}
+    },
+    {
+      "id": "platform-query-language-differs",
+      "intent": "找三年级应用题解题方法",
+      "expect": {"smartedu_angle": "年级学科知识点", "bilibili_angle": "解题过程讲解", "zhihu_angle": "怎么教或方法经验", "generic_angle": "练习和其他站点资料"}
+    }
+  ]
+}

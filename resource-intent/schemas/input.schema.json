@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "request/v1",
+  "title": "Flow request snapshot",
+  "type": "object",
+  "required": ["_meta", "data"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "required": ["session_id", "created_at", "skill"],
+      "properties": {
+        "session_id": {"type": "string", "minLength": 1},
+        "created_at": {"type": "string", "minLength": 1},
+        "skill": {"const": "learning-resource-flow"}
+      },
+      "additionalProperties": true
+    },
+    "data": {
+      "type": "object",
+      "required": ["schema_version", "raw_request", "conversation_evidence"],
+      "properties": {
+        "schema_version": {"const": "request/v1"},
+        "raw_request": {"type": "string", "minLength": 1},
+        "conversation_evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role", "content"],
+            "properties": {
+              "role": {"enum": ["user", "assistant"]},
+              "content": {"type": "string", "minLength": 1}
+            },
+            "additionalProperties": false
+          }
+        },
+        "user_confirmed_facts": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

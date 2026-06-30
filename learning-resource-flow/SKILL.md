@@ -1,174 +1,188 @@
 ---
 name: learning-resource-flow
-description: 儿童学习资源获取与管理的总调度入口。接收用户自然语言需求，按顺序调度 intent、search、platforms、selector、downloader、library-manager 六个阶段，完成从需求理解到归档入库的完整工作流。
+description: 儿童学习资源获取与归档的总调度入口。用于接收自然语言需求，创建并校验 request.json，处理 Intent 澄清循环，并按六阶段顺序调度需求理解、搜索计划、平台搜索、筛选选择、下载和归档。
 ---
 
-# learning-resource-flow · 总调度入口
+# learning-resource-flow
 
-## 概述
+## 职责
 
-本 Skill 是儿童学习资源 Skill 套件的**唯一总入口**，负责协调整个资源获取工作流：
-从用户提出需求开始，经过需求拆解、平台路由、多端搜索召回、用户选择确认、分级下载获取，最终归档到本地资料库。
+作为套件唯一总入口，维护会话状态并调度六个阶段。不要在本 Skill 中实现平台搜索、质量筛选、下载或归档逻辑。
 
-本 Skill 不直接执行搜索或下载，而是调度 5 个业务 Skill（intent/search/selector/downloader/library-manager）和 1 个平台执行 Skill（resource-platforms）协同完成任务。
+```text
+用户需求
+  -> stage 1 resource-intent
+  -> stage 2 resource-search
+  -> stage 3 resource-platforms（搜索模式）
+  -> stage 4 resource-selector
+  -> stage 5 resource-downloader
+  -> stage 6 library-manager
+```
 
----
+下载阶段由 `resource-downloader` 调用 `resource-platforms` 的下载模式；这属于 stage 5 的内部执行，不新增流水线阶段。
 
-## 核心原则
+## 会话目录
 
-1. **用户确认优先**：展示候选后等待用户确认，不静默下载
-2. **最少必要澄清**：只追问会显著改变结果的缺失信息，最多 2 轮
-3. **穷尽召回 + 用户选择**：尽量多搜，把选择权交给用户
-4. **最大化提取 + 分级降级**：能下完整不拿摘要，失败时逐级降级
-5. **归档便于复用**：下载的资源自动归档，后续可主动检索复用
-6. **儿童友好**：默认只保留中文、免费、适龄的内容
+为每个新需求创建：
 
----
+```text
+.learning-resource-work/sessions/{session_id}/
+├── manifest.json
+├── request.json
+├── stage1_intent.json
+├── stage2_search_plan.json
+├── stage3_search_results.json
+├── stage4_selection.json
+├── stage5_download.json
+├── stage6_archive.json
+└── downloads/
+```
 
-## 数据流转规则
+`session_id` 使用 `{YYYYMMDD}-{HHmm}-{topic-slug}`。上下文中只保留 `session_id`、当前阶段和各阶段 `_summary`；完整数据通过文件传递。
 
-> 各阶段输出通过 JSON 文件保存到工作目录，不堆积在上下文中。
+## 初始化 Stage 1 输入
 
-### 1. 创建会话
+执行 Flow 的模型必须先创建 `request.json`，再调用 Intent。不得把聊天消息直接作为未持久化参数传给 Intent。
 
-收到新需求时：
-- 生成 session_id：`{日期}-{时间}-{主题英文缩写}`，如 `20260626-1441-math-grade3`
-- 创建目录：`.learning-resource-work/sessions/{session_id}/`
-- 创建子目录：`downloads/`
-- 写入 `manifest.json`：
+按以下步骤初始化：
+
+1. 原样复制当前用户需求到 `data.raw_request`，不得总结、纠错或补充模型理解。
+2. 只把与当前需求直接有关的历史话语写入 `conversation_evidence`；每条必须包含 `role` 和原文 `content`。
+3. 只把用户已经明确确认的事实写入 `user_confirmed_facts`；不确定时留空，交给 Intent 判断。
+4. 创建 `{session_dir}` 和初始 `manifest.json`，将 stage 1 设为 `pending`，其余阶段也设为 `pending`。
+5. 创建 `{session_dir}/request.json`：
 
 ```json
 {
-  "session_id": "20260626-1441-math-grade3",
-  "user_request": "帮我找三年级数学练习题",
-  "status": "in_progress",
-  "current_stage": 1,
-  "stages": {
-    "stage1": {"status": "pending", "output": "stage1_intent.json"},
-    "stage2": {"status": "pending", "output": "stage2_search.json"},
-    "stage3": {"status": "pending", "output": "stage3_select.json"},
-    "stage4": {"status": "pending", "output": "stage4_download.json"},
-    "stage5": {"status": "pending", "output": "stage5_archive.json"}
+  "_meta": {
+    "session_id": "20260630-1030-math-grade3",
+    "created_at": "ISO 8601",
+    "skill": "learning-resource-flow"
+  },
+  "data": {
+    "schema_version": "request/v1",
+    "raw_request": "帮我找三年级数学练习题",
+    "conversation_evidence": [],
+    "user_confirmed_facts": []
   }
 }
 ```
 
-### 2. 调度每个阶段
+6. 运行输入校验：
 
-对阶段 1→2→3→4→5 依次执行：
-- 更新 manifest.json：当前阶段标记为 `in_progress`
-- 调用对应 Skill，传递三个参数：会话目录路径、上游文件名、输出文件名
-- Skill 返回后：只读输出文件的 `_summary`，不读完整 data
-- 更新 manifest.json：当前阶段标记为 `completed`，回填 summary
-- 根据 summary 决定下一步
+```bash
+python3 learning-resource-flow/scripts/validate_request.py {session_dir}/request.json
+```
 
-### 3. 上下文管理
+7. 只有校验退出码为 0 时，才把 stage 1 设为 `in_progress` 并调用 `resource-intent`。校验失败时修复 `request.json` 一次；仍失败则在 manifest 中将 stage 1 标记为 `failed`，不得继续。
 
-上下文中只保留 session_id、当前阶段、各阶段 summary。需要展示给用户时（如候选列表），从文件读取 data 部分后渲染。
+Stage 1 只能读取该快照，不依赖未持久化的聊天上下文。Flow 后续更新请求时保留 `raw_request` 原文，只追加对话证据和明确确认事实。
 
-### 4. 需求类型判断
+## manifest
 
-| 用户说的 | 处理方式 |
-|---------|---------|
-| 新的搜索/下载主题 | 创建新会话，从阶段一开始 |
-| "刚才那个""加选几个" | 复用当前 session_id，从指定阶段继续 |
-| "我之前存的""上次下载的" | 调用 library-manager 查资料库（不碰 sessions/） |
-| "继续上次没下完的" | 列出 sessions/ 目录让用户选，从中断处继续 |
+创建会话时写入：
 
-> 搜索结果是时效性数据，每次新需求都重新搜索。
+```json
+{
+  "session_id": "20260630-1030-math-grade3",
+  "user_request": "帮我找三年级数学练习题",
+  "status": "in_progress",
+  "current_stage": 1,
+  "stages": {
+    "stage1": {"owner": "resource-intent", "status": "pending", "output": "stage1_intent.json"},
+    "stage2": {"owner": "resource-search", "status": "pending", "output": "stage2_search_plan.json"},
+    "stage3": {"owner": "resource-platforms", "status": "pending", "output": "stage3_search_results.json"},
+    "stage4": {"owner": "resource-selector", "status": "pending", "output": "stage4_selection.json"},
+    "stage5": {"owner": "resource-downloader", "status": "pending", "output": "stage5_download.json"},
+    "stage6": {"owner": "library-manager", "status": "pending", "output": "stage6_archive.json"}
+  }
+}
+```
 
----
+阶段状态只使用 `pending`、`in_progress`、`waiting_user`、`completed`、`failed`、`cancelled`。`waiting_user` 表示阶段已产生明确问题，正在等待用户回答。调用前标记 `in_progress`；成功后写入输出文件名和 `_summary`；失败时记录错误码、原因及可重试性。
 
-## 协作的 Skill 清单
+## 六阶段调度
 
-| Skill | 所在层 | 职责 | 调用阶段 |
-|-------|-------|------|---------|
-| `resource-intent` | 业务能力层 | 需求理解与查询生成 | 阶段一 |
-| `resource-search` | 业务能力层 | 搜索调度（路由+汇总+质控） | 阶段二 |
-| `resource-selector` | 业务能力层 | 候选展示与用户选择 | 阶段三 |
-| `resource-downloader` | 业务能力层 | 下载调度（分发+重试+降级） | 阶段四 |
-| `library-manager` | 业务能力层 | 资源归档、索引、管理 | 阶段五 |
-| `resource-platforms` | 平台执行层 | 具体平台的搜索+下载 | 阶段二、四（由调度层调用） |
+### Stage 1：理解需求
 
-> **注意**：platform skill 由 search 和 downloader 调度器直接调用，flow 不直接调用 platform skill。
->
-> **说明**：资料库检索不作为标准流程的必经步骤，用户需要时可主动调用 library-manager 查询。
+1. 确认 `{session_dir}/request.json` 已通过输入校验；否则停止。
+2. 将 manifest 的 `current_stage` 设为 1，`stages.stage1.status` 设为 `in_progress`。
+3. 调用 `resource-intent`，只传递绝对 `{session_dir}`；Intent 固定读取 `request.json`，输出 `stage1_intent.json`（`intent-spec/v1`）。
+4. 确认输出文件存在，并运行 `resource-intent/scripts/validate_output.py`。输出缺失或校验失败时将 stage 1 标记为 `failed`，不得继续。
+5. 读取 `_summary.status`、`core_topic`、`target_age`、`clarification_required`、`clarification_question` 和 `assumptions`。
+6. `_summary.status=ready` 时，将 stage 1 标记为 `completed`，保存 `_summary`，再进入 stage 2。
+7. `_summary.status=needs_clarification` 时，进入下面的澄清交接；不得调用 Search。
 
----
+### Stage 1：澄清交接
 
-## 阶段调度
+1. 确认 `clarification_question` 是非空字符串，且当前澄清轮数小于 2；否则将 stage 1 标记为 `failed`，错误码使用 `INVALID_CLARIFICATION` 或 `CLARIFICATION_EXHAUSTED`。
+2. 将该问题原文以 `{"role":"assistant","content":"..."}` 追加到 `request.json:data.conversation_evidence`，不得由 Flow 改写、扩展或追加第二个问题。
+3. 重新校验 `request.json`，将 `stages.stage1.status` 设为 `waiting_user`，记录 `clarification_round`、`question` 和 `asked_at`，然后只向用户展示该问题并结束当前轮次。
+4. 用户回答后，将回答原文以 `{"role":"user","content":"..."}` 追加到 `conversation_evidence`。只有回答直接确认了事实时才同步追加到 `user_confirmed_facts`；拿不准时不要概括。
+5. 保留最初的 `raw_request`，重新校验 `request.json`，把 stage 1 设回 `in_progress`，再次调用 Intent。
+6. 最多执行两轮澄清。第二轮后仍为 `needs_clarification` 时停止会话，不得进入 stage 2。
 
-> flow 只负责"调谁、传什么参数、读什么 summary"。各阶段的具体执行逻辑、输出格式模板见 `references/output-templates.md`。
+### Stage 2：生成搜索计划
 
-### 阶段一：需求理解
-- 调用 `resource-intent`，传 `{session_dir}` + 无上游 → 输出 `stage1_intent.json`
-- 读 `_summary`：core_topic、query_count、target_age、search_mode、assumptions
-- 向用户展示任务确认（主题/年龄/目标/资源类型/搜索模式/假设说明），确认后进阶段二
+- 调用 `resource-search`。
+- 输入 `stage1_intent.json`，输出 `stage2_search_plan.json`。
+- 读取 `platform_count`、`platforms`、`query_count` 和 `expected_results`。
+- 本阶段只决定去哪里搜、搜什么、搜多少，不执行搜索。
 
-### 阶段二：搜索召回
-- 调用 `resource-search`，传 `{session_dir}` + `stage1_intent.json` → 输出 `stage2_search.json`
-- 读 `_summary`：候选总数、平台覆盖、质量分布
-- 候选 < 5 个时主动询问用户是否放宽条件/换关键词/开穷尽模式
-- 候选充足则进阶段三
+### Stage 3：执行平台搜索
 
-### 阶段三：候选选择
-- 调用 `resource-selector`，传 `{session_dir}` + `stage2_search.json` → 输出 `stage3_select.json`
-- 读 `_summary`：selected_count、selection_mode
-- 用户未选任何资源则结束；选了则进阶段四
+- 直接调用 `resource-platforms` 的搜索模式。
+- 输入 `stage2_search_plan.json`，输出 `stage3_search_results.json`。
+- 读取 `raw_count`、`success_platforms`、`failed_platforms` 和 `error_count`。
+- 本阶段只执行平台任务、归一化字段和记录错误，不做跨平台筛选或最终质量评分。
 
-### 阶段四：下载获取
-- 调用 `resource-downloader`，传 `{session_dir}` + `stage3_select.json` → 输出 `stage4_download.json`
-- 读 `_summary`：success_count、degraded_count、failed_count
-- 全部失败时告知用户原因并提供降级内容，询问是否换资源
-- 有成功/降级结果则进阶段五
+### Stage 4：筛选并让用户选择
 
-### 阶段五：归档入库
-- 调用 `library-manager`，传 `{session_dir}` + `stage4_download.json` → 输出 `stage5_archive.json`
-- 读 `_summary`：archived_count、skipped_count、dedup_stats
-- 向用户展示最终汇总：成功获取列表 + 降级列表 + 失败列表 + 归档位置
-- 更新 manifest.json 状态为 `completed`
+- 调用 `resource-selector`。
+- 输入 `stage3_search_results.json`，输出 `stage4_selection.json`。
+- Selector 负责跨平台去重、业务过滤、质量评分、排序、展示和用户选择。
+- 读取 `candidate_count`、`selected_count`、`quality_dist`、`selection_mode` 和 `filter_stats`。
+- 没有合格候选时，提供放宽条件、换关键词或扩大平台范围的选项；不要进入下载阶段。
+- 用户没有选择时，将会话标记为 `cancelled`。
 
----
+### Stage 5：下载
+
+- 调用 `resource-downloader`。
+- 输入 `stage4_selection.json`，输出 `stage5_download.json`。
+- 读取 `success_count`、`degraded_count` 和 `failed_count`。
+- Downloader 根据平台调用 `resource-platforms` 下载模式或通用下载方式，并负责重试和降级。
+
+### Stage 6：归档
+
+- 调用 `library-manager`。
+- 输入 `stage5_download.json`，输出 `stage6_archive.json`。
+- 读取 `archived_count`、`skipped_count` 和 `dedup_stats`。
+- 汇总成功、降级、失败和归档位置，将会话标记为 `completed`。
+
+## 恢复与分支
+
+收到消息后先判断：
+
+| 类型 | 处理 |
+|---|---|
+| 新需求 | 创建新会话，从 stage 1 开始 |
+| 修改需求事实或约束 | 更新 `request.json`，从 stage 1 重跑，并使后续阶段失效 |
+| 仅调整搜索范围或平台策略 | 复用已验证 Intent，从 stage 2 重跑 |
+| 查看更多现有候选 | 复用 `stage3_search_results.json`，重跑 stage 4 |
+| 继续未完成下载 | 从 manifest 中首个未完成阶段恢复 |
+| 查询已归档资源 | 直接调用 `library-manager` 检索模式，不创建搜索会话 |
+
+重跑任一阶段时，将其所有下游阶段重置为 `pending`，避免读取旧输出。
 
 ## 异常处理
 
-### 用户取消
-任何阶段用户说"算了""不要了""取消"，都立即终止流程，友好回复。
-
-### 搜索结果太少
-如果搜索结果少于 5 个，主动询问用户：
-- 是否放宽条件？
-- 是否换个关键词？
-- 是否开启穷尽模式？
-
-### 下载全部失败
-如果所有资源都下载失败：
-- 说明失败原因
-- 提供降级内容（摘要、链接）
-- 询问是否需要换其他资源
-
----
-
-## 边界与限制
-
-### 可以做的
-- 搜索国内公开互联网的教育资源
-- 下载公开可访问的文件
-- 转换网页内容为本地可管理形态
-- 使用用户本人的登录态访问平台
-- 管理和复用本地资料库
-
-### 不可以做的
-- 破解付费墙或绕过访问控制
-- 高频滥用式抓取
-- 访问境外网站（YouTube、Facebook等）
-- 保存搜索缓存、临时文件等非最终资源
-- 静默下载用户未确认的资源
-- 传播或分享下载的资源（仅供个人学习）
-
----
+- 用户取消：将当前阶段及会话标记为 `cancelled`。
+- 阶段失败：记录错误；根据 `retryable` 决定重试，不静默跳过。
+- 部分平台失败：stage 3 保留成功平台结果，并将失败平台写入摘要。
+- 下载全部失败：保留来源链接及明确的降级结果，再询问是否更换资源。
+- 不破解付费墙、不绕过访问控制、不下载用户未确认的资源。
 
 ## 参考资料
 
-- `references/workflow-guide.md` - 详细工作流指南与异常处理
-- `references/output-templates.md` - 结构化输出模板规范（4类模板+JSON Schema）
+- `references/workflow-guide.md`：恢复、异常和用户交互规则。
+- `references/output-templates.md`：候选展示、下载进度和最终结果模板。

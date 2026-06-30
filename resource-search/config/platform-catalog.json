@@ -1,0 +1,167 @@
+{
+  "schema_version": "search-platform-catalog/v1",
+  "platforms": {
+    "generic": {
+      "planning_status": "available",
+      "resource_types": ["视频类", "音频类", "文档类", "练习类", "图文类", "图片类", "互动类", "活动类"],
+      "content_forms": ["视频", "音频", "文档", "课件", "教案", "讲义", "练习题", "习题", "试卷", "绘本", "文章", "百科", "指南", "图片", "软件", "应用", "实验", "活动方案"],
+      "file_formats": ["PDF", "DOC", "DOCX", "PPT", "PPTX", "XLS", "XLSX", "TXT", "CSV", "EPUB", "MOBI", "MP3", "M4A", "WAV", "MP4", "WEBM", "ZIP"],
+      "auth": "none",
+      "download_support": "unavailable",
+      "strengths": ["跨站点发现", "补充未接入平台和长尾站点", "发现文档与具体文件格式", "交叉验证平台结果"],
+      "limitations": ["结果来源和质量不稳定", "元数据可能不完整", "必须由 Selector 重新过滤和评分"],
+      "query_profile": {
+        "template": "核心主题 + 年龄/年级 + 资料形态/文件格式；按需使用 site: 或 filetype:",
+        "preferred_terms": []
+      },
+      "search_parameters": {
+        "engines": {"type": "array", "allowed": ["baidu", "bing"], "required_values": ["baidu", "bing"]}
+      }
+    },
+    "bilibili": {
+      "planning_status": "available",
+      "resource_types": ["视频类"],
+      "content_forms": ["视频", "动画", "讲解", "教程", "课程", "纪录片", "讲座", "公开课", "合集", "绘本"],
+      "file_formats": [],
+      "auth": "optional",
+      "download_support": "available",
+      "strengths": ["系统视频讲解", "动画和科普", "兴趣课程和合集"],
+      "limitations": ["不适合作为必须官方或必须可打印需求的唯一来源"],
+      "query_profile": {
+        "template": "主题 + 细分知识点 + 动画/讲解/课程/合集",
+        "preferred_terms": ["讲解", "动画", "课程", "合集"]
+      },
+      "search_parameters": {}
+    },
+    "ximalaya": {
+      "planning_status": "available",
+      "resource_types": ["音频类"],
+      "content_forms": ["音频", "故事", "朗诵", "儿歌", "听书", "音频课", "专辑", "绘本"],
+      "file_formats": [],
+      "auth": "none",
+      "download_support": "unavailable",
+      "strengths": ["故事和朗诵", "磨耳朵", "路上听和睡前听"],
+      "limitations": ["不适合文档、练习题和依赖视觉演示的需求"],
+      "query_profile": {
+        "template": "主题 + 儿童/年龄 + 故事/朗诵/音频/专辑",
+        "preferred_terms": ["故事", "朗诵", "音频", "专辑"]
+      },
+      "search_parameters": {
+        "core": {"type": "string", "allowed": ["album", "track"]},
+        "free_only": {"type": "boolean"},
+        "sort": {"type": "string", "allowed": ["relevance", "popularity", "newest"]}
+      }
+    },
+    "smartedu": {
+      "planning_status": "available",
+      "resource_types": ["视频类", "音频类", "文档类", "练习类", "图片类"],
+      "content_forms": ["视频", "音频", "文档", "课件", "教案", "讲义", "练习题", "习题", "试卷", "图片"],
+      "file_formats": [],
+      "auth": "optional",
+      "download_support": "available",
+      "strengths": ["官方教材同步", "分学段年级课程", "课件和练习资源"],
+      "limitations": ["不适合非学科兴趣或经验方法类需求"],
+      "query_profile": {
+        "template": "课内或官方需求使用学段 + 学科 + 知识点；年级、版本和册次仅在确实有助于当前检索时加入",
+        "preferred_terms": ["小学", "年级", "上册", "下册", "版本"]
+      },
+      "search_parameters": {}
+    },
+    "zhihu": {
+      "planning_status": "available",
+      "resource_types": ["图文类"],
+      "content_forms": ["文章", "经验", "方法", "指南", "百科", "图文教程"],
+      "file_formats": [],
+      "auth": "optional",
+      "download_support": "available",
+      "strengths": ["学习方法", "家长和教师经验", "解释性图文和资源线索"],
+      "limitations": ["不宜作为儿童直接学习内容或官方资料的唯一来源"],
+      "query_profile": {
+        "template": "主题 + 问题 + 怎么学/方法/经验/推荐",
+        "preferred_terms": ["怎么学", "方法", "经验", "推荐"]
+      },
+      "search_parameters": {}
+    },
+    "douyin": {
+      "planning_status": "available",
+      "resource_types": ["视频类"],
+      "content_forms": ["短视频", "教程", "讲解"],
+      "file_formats": [],
+      "auth": "runtime",
+      "download_support": "available",
+      "strengths": ["单一技巧", "动作示范", "碎片化兴趣启发"],
+      "limitations": ["不适合作为系统课程或深度学习的唯一来源"],
+      "query_profile": {
+        "template": "短主题 + 单一动作/技巧",
+        "preferred_terms": ["快速", "技巧", "示范", "教程"]
+      },
+      "search_parameters": {}
+    },
+    "weibo": {
+      "planning_status": "available",
+      "resource_types": ["图文类", "视频类"],
+      "content_forms": ["文章", "图集", "短视频"],
+      "file_formats": [],
+      "auth": "required",
+      "download_support": "available",
+      "strengths": ["机构发布", "资料分享线索", "时效内容"],
+      "limitations": ["不适合作为系统课程或稳定下载来源"],
+      "query_profile": {
+        "template": "主题 + 资料/分享/活动",
+        "preferred_terms": ["资料", "分享", "活动"]
+      },
+      "search_parameters": {}
+    },
+    "open163": {
+      "planning_status": "available",
+      "resource_types": ["视频类"],
+      "content_forms": ["公开课", "纪录片", "讲座", "课程"],
+      "file_formats": [],
+      "auth": "none",
+      "download_support": "unavailable",
+      "strengths": ["深度公开课", "纪录片", "高龄通识拓展"],
+      "limitations": ["不适合低龄启蒙或小学教材同步练习"],
+      "query_profile": {
+        "template": "主题 + 公开课/纪录片/课程",
+        "preferred_terms": ["公开课", "纪录片", "课程"]
+      },
+      "search_parameters": {}
+    },
+    "baiduwenku": {
+      "planning_status": "planned",
+      "resource_types": ["文档类", "练习类"],
+      "content_forms": ["文档", "课件", "教案", "讲义", "练习题", "试卷"],
+      "file_formats": ["PDF", "DOC", "DOCX", "PPT", "PPTX"],
+      "auth": "unknown",
+      "download_support": "planned",
+      "strengths": ["文档、课件和练习资料"],
+      "limitations": ["当前尚无可执行搜索接口"],
+      "query_profile": {"template": "主题 + 文档形态 + 文件格式", "preferred_terms": []},
+      "search_parameters": {}
+    },
+    "xiaohongshu": {
+      "planning_status": "planned",
+      "resource_types": ["图文类", "视频类"],
+      "content_forms": ["图文教程", "经验", "短视频", "图集"],
+      "file_formats": [],
+      "auth": "unknown",
+      "download_support": "planned",
+      "strengths": ["育儿经验和图文资源分享"],
+      "limitations": ["当前尚无可执行搜索接口"],
+      "query_profile": {"template": "主题 + 经验/教程/分享", "preferred_terms": []},
+      "search_parameters": {}
+    },
+    "cctv": {
+      "planning_status": "planned",
+      "resource_types": ["视频类"],
+      "content_forms": ["视频", "纪录片", "动画", "课程"],
+      "file_formats": [],
+      "auth": "unknown",
+      "download_support": "planned",
+      "strengths": ["权威视频、纪录片和少儿节目"],
+      "limitations": ["当前尚无可执行搜索接口"],
+      "query_profile": {"template": "主题 + 纪录片/动画/课程", "preferred_terms": []},
+      "search_parameters": {}
+    }
+  }
+}

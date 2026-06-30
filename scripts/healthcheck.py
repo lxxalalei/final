@@ -6,8 +6,8 @@
   a. 目录结构完整性 — 关键目录是否存在
   b. 文件存在性     — 关键文件是否到位
   c. 契约一致性     — SKILL.md 中引用的契约路径是否有效
-  d. Python 依赖    — shared/ 模块 import 是否可解析
-  e. 平台映射       — platform-mapping.md 中"可用"平台是否有目录和 SKILL.md
+  d. Python 依赖    — resource-platforms/scripts/shared 模块是否可解析
+  e. 平台注册       — platform-registry/v2 中可用平台是否有真实搜索入口
 
 退出码：
   0 — 全部 PASS（允许 WARN）
@@ -24,6 +24,7 @@ from __future__ import annotations
 import re
 import sys
 import ast
+import json
 import importlib
 from pathlib import Path
 from datetime import datetime
@@ -41,30 +42,46 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # (a) 关键目录
 CRITICAL_DIRS = [
-    "shared",
-    "shared/schemas",
-    "shared/config",
+    "learning-resource-flow",
+    "resource-intent",
+    "resource-search",
+    "resource-selector",
+    "resource-downloader",
+    "library-manager",
     "resource-platforms",
     "resource-platforms/scripts",
     "resource-platforms/scripts/shared",
     "resource-platforms/references",
     "config",
-    "_templates",
     "tests",
 ]
 
 # (b) 关键文件
 CRITICAL_FILES = [
-    # schemas
-    "shared/schemas/resource-schema.md",
-    "shared/schemas/error-codes.md",
-    "shared/schemas/skill-contract.md",
-    "shared/schemas/platform-search-contract.md",
-    "shared/schemas/platform-download-contract.md",
-    "shared/schemas/quality-rubric.md",
-    # config
-    "shared/config/platform-mapping.md",
-    "shared/config/platform-advantages.md",
+    # Skill entrypoints
+    "learning-resource-flow/SKILL.md",
+    "resource-intent/SKILL.md",
+    "resource-search/SKILL.md",
+    "resource-selector/SKILL.md",
+    "resource-downloader/SKILL.md",
+    "library-manager/SKILL.md",
+    "resource-platforms/SKILL.md",
+    # self-contained contracts
+    "resource-platforms/references/schemas/resource-schema.md",
+    "resource-platforms/references/schemas/error-codes.md",
+    "resource-platforms/references/schemas/platform-search-contract.md",
+    "resource-platforms/references/schemas/platform-download-contract.md",
+    "resource-platforms/config/platform-registry.json",
+    "resource-selector/references/quality-rubric.md",
+    "resource-intent/schemas/input.schema.json",
+    "resource-intent/schemas/output.schema.json",
+    "resource-intent/scripts/validate_output.py",
+    "resource-intent/examples/golden-cases.json",
+    "resource-search/schemas/input.schema.json",
+    "resource-search/schemas/output.schema.json",
+    "resource-search/config/platform-catalog.json",
+    "resource-search/scripts/validate_output.py",
+    "resource-search/examples/routing-cases.json",
     # shared modules（已迁移至 resource-platforms/scripts/shared/）
     "resource-platforms/scripts/shared/__init__.py",
     "resource-platforms/scripts/shared/platform_base.py",
@@ -74,10 +91,6 @@ CRITICAL_FILES = [
     "resource-platforms/scripts/shared/config_loader.py",
     # config files
     "config/settings.example.yaml",
-    # templates
-    "_templates/platform-skill-template.md",
-    # docs
-    "README.md",
 ]
 
 # (d) 需要检查 import 的 shared 模块（仅标准库依赖部分）
@@ -90,7 +103,9 @@ SHARED_MODULES = [
 ]
 
 # (e) 已接入平台（状态为 ✅ 可用的）
-ACTIVE_PLATFORMS = ["bilibili", "smartedu", "zhihu", "douyin", "weibo"]
+ACTIVE_PLATFORMS = [
+    "generic", "bilibili", "smartedu", "zhihu", "douyin", "weibo", "ximalaya", "open163"
+]
 
 # (c) 需要扫描契约引用的 SKILL.md 文件列表
 SKILL_MD_FILES = [
@@ -101,11 +116,14 @@ SKILL_MD_FILES = [
     "resource-downloader/SKILL.md",
     "library-manager/SKILL.md",
     "resource-platforms/SKILL.md",
-    "resource-platforms/references/bilibili.md",
-    "resource-platforms/references/smartedu.md",
-    "resource-platforms/references/zhihu.md",
-    "resource-platforms/references/douyin.md",
-    "resource-platforms/references/weibo.md",
+    "resource-platforms/references/platforms/bilibili.md",
+    "resource-platforms/references/platforms/smartedu.md",
+    "resource-platforms/references/platforms/zhihu.md",
+    "resource-platforms/references/platforms/douyin.md",
+    "resource-platforms/references/platforms/weibo.md",
+    "resource-platforms/references/platforms/ximalaya.md",
+    "resource-platforms/references/platforms/open163.md",
+    "resource-platforms/references/platforms/generic.md",
 ]
 
 # ════════════════════════════════════════════════════════════════
@@ -157,7 +175,7 @@ def check_files() -> list[CheckResult]:
 
 
 def check_contract_references() -> list[CheckResult]:
-    """(c) 检查 SKILL.md 中引用的 shared/ 契约路径是否有效。
+    """(c) 检查 SKILL.md 中是否仍引用已移除的根级 shared/ 契约。
 
     扫描所有 SKILL.md，提取形如 ``../../shared/xxx`` 或 ``../shared/xxx``
     的相对路径引用，然后以该 SKILL.md 所在目录为基准解析路径，检查文件是否存在。
@@ -166,9 +184,7 @@ def check_contract_references() -> list[CheckResult]:
 
     # 匹配 SKILL.md 中对 shared/ 的相对路径引用
     # 支持格式：
-    #   `../../shared/schemas/platform-search-contract.md`
-    #   `../shared/schemas/resource-schema.md`
-    #   `shared/schemas/error-codes.md`（frontmatter 内，从根开始）
+    # 任何命中的根级 shared/schemas 或 shared/config 都属于旧架构残留。
     ref_pattern = re.compile(
         r"`((?:\.\./)*shared/(?:schemas|config)/[^\s`]+)`"
     )
@@ -320,103 +336,102 @@ def check_python_imports(skip_deps: bool = False) -> list[CheckResult]:
     return results
 
 
-def check_platform_mapping() -> list[CheckResult]:
-    """(e) 检查 platform-mapping.md 中标记为"可用"的平台是否有对应目录和 SKILL.md。
-
-    同时解析映射表，对比实际 platforms/ 目录。
-    """
+def check_platform_registry() -> list[CheckResult]:
+    """(e) 检查平台注册表中的 available 搜索入口和平台文档。"""
     results = []
 
-    mapping_file = _p("shared/config/platform-mapping.md")
-    if not mapping_file.is_file():
+    registry_file = _p("resource-platforms/config/platform-registry.json")
+    if not registry_file.is_file():
         results.append(CheckResult(
-            "平台映射表", "FAIL",
-            f"platform-mapping.md 不存在: {mapping_file}"
+            "平台注册表", "FAIL",
+            f"platform-registry.json 不存在: {registry_file}"
         ))
         return results
 
-    text = mapping_file.read_text(encoding="utf-8")
+    try:
+        registry = json.loads(registry_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [CheckResult("平台注册表", "FAIL", f"无法解析: {exc}")]
+    if registry.get("schema_version") != "platform-registry/v2" or registry.get("entry_base") != "resource-platforms":
+        return [CheckResult("平台注册表", "FAIL", "必须符合 platform-registry/v2 且 entry_base=resource-platforms")]
 
-    # 解析映射表中的行：| `platform_id` | ... | `resource-platforms/scripts/xxx` | ✅ 可用 | ...
-    # 提取平台标识和状态
-    table_row = re.compile(
-        r"\|\s*`([a-z_]+)`\s*\|"     # 平台标识
-        r"[^|]*\|"                      # 平台名称
-        r"\s*`?(resource-platforms/scripts/[a-z_]+)`?\s*\|"  # Skill 路径
-        r"\s*(✅\s*可用|规划中|开发中|不可用)\s*\|"  # 状态
-    )
+    platforms = registry.get("platforms", {})
+    available = {
+        platform_id: entry for platform_id, entry in platforms.items()
+        if isinstance(entry, dict)
+        and isinstance(entry.get("search"), dict)
+        and entry["search"].get("status") == "available"
+    }
+    if set(available) != set(ACTIVE_PLATFORMS):
+        results.append(CheckResult(
+            "平台注册表 available 集合", "FAIL",
+            f"期望 {sorted(ACTIVE_PLATFORMS)}，实际 {sorted(available)}"
+        ))
 
-    active_platforms = []
-    planned_platforms = []
-
-    for m in table_row.finditer(text):
-        platform_id = m.group(1)
-        skill_path = m.group(2)
-        status = m.group(3)
-
-        if "可用" in status and platform_id != "generic":
-            active_platforms.append((platform_id, skill_path))
-        elif "规划" in status or "开发" in status:
-            planned_platforms.append((platform_id, skill_path))
-
-    # 检查"可用"平台
-    for platform_id, skill_path in active_platforms:
-        platform_dir = _p(skill_path)
-        skill_md = _p(f"resource-platforms/references/{platform_id}.md")
-
+    for platform_id, entry in available.items():
+        platform_dir = _p(f"resource-platforms/scripts/{platform_id}")
+        platform_doc = _p(f"resource-platforms/references/platforms/{platform_id}.md")
+        search_capability = entry.get("search", {})
+        search_entry = _p(f"resource-platforms/{search_capability.get('entry', '')}")
         if not platform_dir.is_dir():
             results.append(CheckResult(
-                f"平台映射 {platform_id}", "FAIL",
-                f"目录不存在: {skill_path}/"
+                f"平台 {platform_id}", "FAIL", f"脚本目录不存在: {platform_dir}"
             ))
-        elif not skill_md.is_file():
+        elif not search_entry.is_file():
             results.append(CheckResult(
-                f"平台映射 {platform_id}", "FAIL",
-                f"SKILL.md 不存在: resource-platforms/references/{platform_id}.md"
+                f"平台 {platform_id}", "FAIL", f"search_entry 不存在: {search_entry}"
+            ))
+        elif not platform_doc.is_file():
+            results.append(CheckResult(
+                f"平台 {platform_id}", "FAIL", f"平台文档不存在: {platform_doc}"
             ))
         else:
+            results.append(CheckResult(f"平台 {platform_id}", "PASS"))
+
+    for platform_id, entry in platforms.items():
+        search_capability = entry.get("search", {}) if isinstance(entry, dict) else {}
+        if search_capability.get("status") != "available" and search_capability.get("entry"):
             results.append(CheckResult(
-                f"平台映射 {platform_id}", "PASS"
+                f"平台 {platform_id} 非 available", "WARN",
+                "非 available 平台配置了 search.entry，请确认状态"
             ))
 
-    # 检查"规划中"平台（缺少目录是正常的，只做 INFO 提示）
-    for platform_id, skill_path in planned_platforms:
-        platform_dir = _p(skill_path)
-        if not platform_dir.is_dir():
-            results.append(CheckResult(
-                f"平台映射 {platform_id} (规划中)", "WARN",
-                f"尚未创建目录: {skill_path}/"
-            ))
-        else:
-            results.append(CheckResult(
-                f"平台映射 {platform_id} (规划中)", "PASS",
-                f"目录已存在: {skill_path}/"
-            ))
+    catalog_file = _p("resource-search/config/platform-catalog.json")
+    try:
+        catalog = json.loads(catalog_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        results.append(CheckResult("Search 平台目录", "FAIL", f"无法解析: {exc}"))
+        return results
+    if catalog.get("schema_version") != "search-platform-catalog/v1":
+        results.append(CheckResult("Search 平台目录", "FAIL", "schema_version 必须为 search-platform-catalog/v1"))
+        return results
 
-    # 反向检查：resource-platforms/scripts/ 下的平台目录是否都在映射表中
-    scripts_platforms_dir = _p("resource-platforms/scripts")
-    if scripts_platforms_dir.is_dir():
-        mapped_ids = {p[0] for p in active_platforms + planned_platforms}
-        for child in sorted(scripts_platforms_dir.iterdir()):
-            if child.is_dir() and not child.name.startswith(".") and not child.name.startswith("_") and child.name != "shared":
-                if child.name not in mapped_ids:
-                    results.append(CheckResult(
-                        f"平台映射 {child.name} (未注册)", "WARN",
-                        f"resource-platforms/scripts/{child.name}/ 存在但未在映射表中注册"
-                    ))
+    catalog_platforms = catalog.get("platforms", {})
+    if not isinstance(catalog_platforms, dict) or set(catalog_platforms) != set(platforms):
+        results.append(CheckResult(
+            "Search 与 Platform 平台集合", "FAIL",
+            f"catalog={sorted(catalog_platforms) if isinstance(catalog_platforms, dict) else 'invalid'}; registry={sorted(platforms)}"
+        ))
+        return results
 
-    # 检查已接入平台的适配器脚本
-    for platform_id in ACTIVE_PLATFORMS:
-        adapter = _p(f"resource-platforms/scripts/{platform_id}/adapter.py")
-        if not adapter.is_file():
-            results.append(CheckResult(
-                f"平台适配器 {platform_id}", "FAIL",
-                f"adapter.py 不存在: resource-platforms/scripts/{platform_id}/adapter.py"
-            ))
-        else:
-            results.append(CheckResult(
-                f"平台适配器 {platform_id}", "PASS"
-            ))
+    sync_errors = []
+    required_planning_fields = {
+        "planning_status", "resource_types", "content_forms", "file_formats", "auth",
+        "download_support", "strengths", "limitations", "query_profile",
+    }
+    for platform_id, planning in catalog_platforms.items():
+        execution = platforms[platform_id]
+        if not isinstance(planning, dict) or not required_planning_fields.issubset(planning):
+            sync_errors.append(f"{platform_id}: 规划字段不完整")
+            continue
+        if planning["planning_status"] != execution.get("search", {}).get("status"):
+            sync_errors.append(f"{platform_id}: search status 不一致")
+        if planning["download_support"] != execution.get("download", {}).get("status"):
+            sync_errors.append(f"{platform_id}: download status 不一致")
+    if sync_errors:
+        results.append(CheckResult("Search 与 Platform 静态配置同步", "FAIL", "; ".join(sync_errors)))
+    else:
+        results.append(CheckResult("Search 与 Platform 静态配置同步", "PASS"))
 
     return results
 
@@ -499,7 +514,7 @@ def main() -> int:
     all_results.extend(check_files())
     all_results.extend(check_contract_references())
     all_results.extend(check_python_imports(skip_deps=args.no_deps))
-    all_results.extend(check_platform_mapping())
+    all_results.extend(check_platform_registry())
 
     # 输出报告
     print(format_report(all_results, quiet=args.quiet))

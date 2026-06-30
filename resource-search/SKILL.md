@@ -1,322 +1,189 @@
 ---
 name: resource-search
-description: 搜索策略生成器。接收需求理解阶段的查询指令组，分析需求特点，判断最佳平台组合，针对每个平台优化搜索关键词，生成结构化的平台搜索任务清单，输出给搜索执行层。
+description: 搜索策略生成器。接收 resource-intent 已整理的需求，判断哪些平台更可能找到合适资料，为不同平台生成符合其内容优势和搜索习惯的关键词，并输出可由 resource-platforms 直接执行的搜索任务。负责决定“去哪里搜、每处搜什么”，不执行搜索、不筛选结果。
 ---
 
-# resource-search · 搜索策略生成
+# resource-search
 
-## 我是谁
+## 核心任务
 
-**上游**：resource-intent（从需求理解 Skill 接收查询指令组）
-**下游**：resource-platforms（把搜索任务清单传给搜索执行层）
-**阶段编号**：stage 2
+Search 是搜索策略层，不是字段转换器。它需要理解上一步需求，然后回答两个问题：
 
-核心定位：**搜索的军师**——不负责实际去搜，而是负责"想清楚怎么搜效果最好"。
-判断什么需求该去哪个平台、每个平台该搜什么关键词、搜多少、用什么策略。
+1. 这个需求在哪些平台更容易搜到合适内容？
+2. 同一个需求到了不同平台，分别应该搜什么？
 
----
+输出只服务于下一步真实搜索：平台、优先级、查询词、每次返回数量和平台实际支持的参数。
 
-## 执行前准备
+## 输入与输出
 
-### 1. 确认参数
+- 输入：`{session_dir}/stage1_intent.json`，要求 `data.status=ready`。
+- 输出：`{session_dir}/stage2_search_plan.json`。
+- 版本：`search-plan/v1`。
+- 平台事实来源：`config/platform-catalog.json`。
 
-从 flow 传入的参数中获取：
-- `{session_dir}`：会话目录路径（绝对路径）
-- `{input_file}`：上游输入文件名（通常是 `stage1_intent.json`）
-- `{output_file}`：本阶段输出文件名（通常是 `stage2_search_plan.json`）
+Intent 仍需澄清时停止，不生成搜索计划。不得在本阶段重新追问用户或改写上游需求。
 
-### 2. 读取上游输入
+## 制定策略前读取
 
-读取 `{session_dir}/{input_file}` 文件，提取其中的 `data` 部分。
+1. `config/platform-catalog.json`：平台是否可执行、内容优势、局限、查询习惯和真实搜索参数。
+2. `references/routing-rules.md`：如何根据主题、学习方式、资料形态和使用场景选择平台。
+3. `references/query-strategy.md`：如何把需求改写成不同平台适用的搜索词。
+4. 生成 generic 的 `site:` 查询时再读取 `references/site-whitelist.md`。
 
-> 💡 只需要读 `data`，`_meta` 和 `_summary` 可以忽略（那是给 flow 用的）
+## 工作方法
 
-**需要读取的字段**（从 data 中）：
-- `core_topic`：核心主题（字符串，✅必选）
-  - 用于判断主题类型，选择合适的平台
-- `queries`：查询列表（数组，✅必选）
-  - 每个元素包含 `text`（查询词）、`tier`（优先级）、`format_hint`（形态提示）
-  - 这是基础查询，我们会针对各平台进行优化
-- `target_age`：目标年龄范围（字符串，✅必选）
-  - 用于平台选择和关键词优化
-- `grade_level`：年级（字符串，⚠️可选）
-- `difficulty`：难度偏好（字符串，✅必选）
-  - 入门 / 进阶 / 系统
-- `format_preferences`：资源形态偏好（数组，✅必选）
-  - 视频 / 音频 / 文档 / 图文
-- `source_preference`：来源偏好（字符串，✅必选）
-  - 不限 / 官方优先 / 视频平台优先
-- `search_mode`：搜索模式（字符串，✅必选）
-  - standard：标准模式
-  - exhaustive：穷尽模式
-- `assumptions`：默认假设清单（数组，⚠️可选，透传给下游）
+### 1. 理解这次到底要找什么
 
----
+综合阅读 Intent，不要只盯某一个字段。重点理解：
 
-## 执行步骤
+- 核心主题是什么。
+- 是直接学习、听读、观看讲解、做练习、查方法，还是找可打印资料。
+- 用户明确要什么形态、来源、文件类型或平台。
+- 什么是硬要求，什么只是偏好，什么没有说明。
+- 年龄、年级、教材版本等信息是否真的会改善这次搜索。
 
-### 第一步：需求分析与主题分类
+不要因为出现“小学”就自动转成教材同步搜索，也不要因为出现学科名就自动要求具体年级。比如“小学古诗学习”首先是通用古诗学习需求，应自然考虑朗诵、背诵、原文注释、译文、赏析和动画理解；只有当前需求本身体现课内同步、特定教材或具体知识点时，年级和版本才是有价值的搜索维度。
 
-先搞清楚这是什么类型的需求，才能选对平台。
+这里采用语义判断，不需要给每种情况编写排他条件。判断标准只有一个：加入这个维度是否会让结果更贴近当前需求。
 
-**需要判断的维度**：
-1. **主题类型**：科普 / 学科学习 / 古诗语文 / 思维训练 / 艺术美育 / 习惯品格 / 兴趣拓展
-2. **资源形态侧重**：视频为主 / 音频为主 / 文档为主 / 图文为主 / 混合
-3. **年龄阶段**：低幼（3-6岁）/ 小学低年级（6-9岁）/ 小学高年级（9-12岁）
-4. **质量要求**：是否需要官方权威内容 / 是否需要系统性课程 / 是否接受碎片化内容
+### 2. 给不同平台分配不同任务
 
-**判断依据**：
-- 从 `core_topic` 判断主题类型
-- 从 `format_preferences` 判断形态侧重
-- 从 `target_age` 和 `grade_level` 判断年龄阶段
-- 从 `difficulty` 和 `source_preference` 判断质量要求
+从 available 平台中选择最可能贡献有效结果的平台。先看主题与学习方式，再看资源形态和平台内容生态。
 
-**本步产出**：
-- `theme_type`：主题类型
-- `age_segment`：年龄分段
-- `format_focus`：形态侧重
-- `quality_requirement`：质量要求
+每个平台都应承担明确而不同的任务。例如“小学古诗学习”：
 
----
+- 喜马拉雅负责朗诵、跟读、背诵和音频专辑。
+- B站负责动画、意境、逐句解释和赏析讲解。
+- generic 负责原文、注释、译文、学习资料及其他公开站点。
+- 智慧教育只有在官方课程、课内同步等方向有实际价值时再加入，而不是看到“小学”就默认加入。
 
-### 第二步：平台选择与优先级排序 ⭐ 核心
+如果某个平台不能提供新的内容形态、来源或理解角度，就不必加入。用户明确指定平台或形态时优先满足，但仍可以增加确有互补价值的平台。
 
-根据需求特点，选择最合适的平台组合，并排出优先级。
+generic 是固定的全网补充任务，每次同时使用百度和 Bing。它不是平台搜索失败后的临时兜底，而是用于发现未接入站点、长尾网页和具体文件。
 
-**选择逻辑**：
+### 3. 针对平台生成搜索词
 
-1. **用户指定优先**：
-   - 如果 `source_preference` 是"官方优先"，优先选 smartedu 等官方平台
-   - 如果是"视频平台优先"，优先选 bilibili 等视频平台
-   - 如果用户明确说了某个平台，直接放在最高优先级
+不要把一个关键词复制到所有平台，也不要只在后面机械加平台热词。
 
-2. **主题匹配**（查平台优势图谱）：
-   - 科普类 → bilibili（视频）、open163（公开课）、zhihu（图文）
-   - 学科类 → smartedu（官方）、bilibili（讲解视频）、baiduwenku（文档）
-   - 古诗语文 → bilibili（动画）、ximalaya（音频）、smartedu（官方）
-   - 思维训练 → bilibili（益智视频）、zhihu（方法）
-   - 艺术美育 → bilibili、douyin（短视频）
-   - 习惯品格 → ximalaya（故事）、bilibili（动画）
-   - 兴趣拓展 → bilibili、zhihu、xiaohongshu
+先确定该平台负责找什么，再围绕这一任务生成若干不同角度的自然搜索词：
 
-> 📖 完整平台优势图谱见：`./references/config/platform-advantages.md`
-> 📖 平台映射表见：`./references/config/platform-mapping.md`
+- 保留主题核心词，避免扩展后偏离需求。
+- 拆分主题中值得分别搜索的内容角度，如朗诵、注释、实验、练习、方法、动画、课程。
+- 使用平台用户真实会输入的表达。
+- 查询之间应扩大实际召回面，而不只是同义词替换。
+- 用户没有指定文件格式时，不擅自把“可打印”改成 PDF。
+- 年龄、年级和版本只在有助于检索时使用，不要求每条查询都携带。
 
-3. **形态补充**：
-   - 要视频 → 加 bilibili、smartedu、open163
-   - 要音频 → 加 ximalaya
-   - 要文档 → 加 baiduwenku、smartedu
-   - 要图文 → 加 zhihu、weibo、xiaohongshu
+standard 通常为主力平台生成 2-4 条查询、补充平台 1-3 条；exhaustive 可以增加平台和查询角度。数量是参考，不是必须凑满的指标。
 
-4. **通用兜底**：
-   - 通用搜索作为最后兜底，防止漏网
+### 4. 只使用真实接口参数
 
-**最终平台数量**：
-- 标准模式：3-5 个平台
-- 穷尽模式：5-7 个平台
+每条 `searches[]` 就是下一步的一次搜索调用：
 
-**本步产出**：
-- `selected_platforms`：选定的平台列表（按优先级排序）
-  - 每个元素包含：`platform_id`（平台标识）、`priority`（优先级）、`reason`（选择理由）
+- `query`：发送给平台的关键词。
+- `max_results`：该次调用最多返回多少条。
+- `params`：仅填写 catalog 中该平台 `search_parameters` 声明的参数。
 
----
+当前只有少数平台有额外搜索参数：
 
-### 第三步：各平台关键词优化
+- ximalaya：`core`、`free_only`、`sort`。
+- generic：`engines`，固定同时包含 `baidu`、`bing`。
+- 其他平台当前只消费关键词和最大结果数，因此 `params` 使用 `{}`。
 
-针对每个选定的平台，优化搜索关键词——同样的主题，不同平台搜法不一样。
+不要输出平台脚本不会读取的虚构参数。认证信息由 Platform Skill 自己管理，不写进搜索计划。
 
-**优化原则**：
-
-| 平台 | 关键词优化策略 |
-|------|--------------|
-| **bilibili** | 加"动画"、"讲解"、"课程"、"合集"等词；适合搜系统性内容 |
-| **ximalaya** | 加"故事"、"音频"、"听"、"专辑"等词；适合搜睡前听、磨耳朵 |
-| **smartedu** | 用学科名 + 年级，如"三年级数学"；官方平台，关键词要正式 |
-| **zhihu** | 加"推荐"、"怎么学"、"经验"等词；适合搜方法和经验 |
-| **douyin** | 关键词要短、要口语化；适合搜短视频教程 |
-| **weibo** | 加"资料"、"分享"等词；适合搜资料整理 |
-| **open163** | 加"公开课"、"TED"、"纪录片"等词；适合搜深度内容 |
-
-**年龄适配**：
-- 低幼 → 加"幼儿"、"启蒙"、"宝宝"
-- 小学低年级 → 加"低年级"、"入门"、"基础"
-- 小学高年级 → 加"高年级"、"进阶"、"提高"
-
-**每个平台的查询数量分配**：
-- 第一梯队平台（优先级最高）：3-5 个查询
-- 第二梯队平台：2-3 个查询
-- 补充平台：1-2 个查询
-- 通用兜底：1-2 个查询
-
-**本步产出**：
-- `platform_queries`：各平台的优化后查询列表
-  - 结构：`{ platform_id: [ {query, priority, format_hint}, ... ] }`
-
----
-
-### 第四步：生成搜索任务清单
-
-把前面的结果整理成结构化的搜索任务清单。
-
-**每个平台的任务包含**：
-- `platform_id`：平台标识（如 bilibili）
-- `platform_name`：平台名称（如 B站）
-- `priority`：优先级（P0 / P1 / P2）
-- `queries`：该平台要搜的查询列表
-  - 每个查询包含：`text`（关键词）、`tier`（优先级）、`format_hint`（形态提示）
-- `target_count`：预期召回数量（该平台预期找多少条）
-- `search_params`：其他搜索参数（排序方式、时间范围等，可选）
-
-**总预期数量**：
-- 标准模式：原始召回 50-80 条，最终精选 20-25 条
-- 穷尽模式：原始召回 80-120 条，最终精选 30-40 条
-
-**本步产出**：
-- `search_tasks`：完整的搜索任务清单（数组）
-- `total_expected`：总预期召回数量
-- `search_strategy`：策略说明（为什么这么选平台、为什么这么分配）
-
----
-
-### 第五步：写入输出文件
-
-将搜索任务清单写入 `{session_dir}/{output_file}`（通常是 `stage2_search_plan.json`）。
-
-**文件格式**（三层结构）：
+### 5. 写入搜索计划
 
 ```json
 {
   "_meta": {
     "stage": 2,
-    "session_id": "从输入文件中继承",
+    "session_id": "继承上游",
     "skill": "resource-search",
-    "created_at": "当前时间（ISO 8601 格式）",
-    "input_from": "{input_file}"
+    "created_at": "ISO 8601",
+    "input_from": "stage1_intent.json",
+    "schema_version": "search-plan/v1"
   },
   "_summary": {
-    // 给 flow 看的摘要
+    "platform_count": 3,
+    "platforms": ["ximalaya", "bilibili", "generic"],
+    "query_count": 7,
+    "expected_results": 105
   },
   "data": {
-    // 给下游 platform 用的完整搜索任务
+    "schema_version": "search-plan/v1",
+    "intent_ref": "stage1_intent.json",
+    "strategy": "古诗学习以音频听读和视频理解为主，全网搜索补充原文、注释和其他公开资料。",
+    "search_tasks": [
+      {
+        "task_id": "task-ximalaya-audio",
+        "platform": "ximalaya",
+        "priority": "P0",
+        "reason": "古诗朗诵、跟读和背诵音频是该平台的优势内容",
+        "searches": [
+          {
+            "query": "小学古诗朗诵专辑",
+            "max_results": 15,
+            "params": {"core": "album", "sort": "relevance"}
+          },
+          {
+            "query": "小学生必背古诗跟读",
+            "max_results": 15,
+            "params": {"core": "track", "sort": "relevance"}
+          }
+        ]
+      },
+      {
+        "task_id": "task-bilibili-video",
+        "platform": "bilibili",
+        "priority": "P0",
+        "reason": "动画和讲解适合帮助孩子理解古诗内容与意境",
+        "searches": [
+          {"query": "小学古诗动画", "max_results": 15, "params": {}},
+          {"query": "儿童古诗意境讲解", "max_results": 15, "params": {}},
+          {"query": "小学生古诗逐句赏析", "max_results": 15, "params": {}}
+        ]
+      },
+      {
+        "task_id": "task-generic-web",
+        "platform": "generic",
+        "priority": "P1",
+        "reason": "补充原文注释、译文、学习资料和未接入站点",
+        "searches": [
+          {
+            "query": "小学古诗 原文 注释 译文",
+            "max_results": 15,
+            "params": {"engines": ["baidu", "bing"]}
+          },
+          {
+            "query": "小学古诗 学习资料",
+            "max_results": 15,
+            "params": {"engines": ["baidu", "bing"]}
+          }
+        ]
+      }
+    ]
   }
 }
 ```
 
----
+`expected_results` 是所有 `searches[].max_results` 的合计上限，不代表实际结果数，也不代表最终筛选数量。
 
-#### _summary 部分（flow 读这个做调度）
+## 完成前自检
 
-**必须写入的字段**：
-- `platform_count`：选定平台数量（数字）
-  - 示例：4
-- `platforms`：平台列表（数组）
-  - 示例：["bilibili", "smartedu", "ximalaya", "zhihu"]
-- `query_count`：总查询数量（数字）
-  - 示例：15
-- `expected_results`：预期召回数量（数字）
-  - 示例：60
+- 平台组合是否来自当前需求，而不是默认套餐。
+- 每个平台是否承担了不同的搜索方向。
+- 查询词是否体现主题内容的多角度拓展，而不只是形态后缀。
+- 有没有把用户没说的教材、年级、格式或来源变成搜索前提。
+- `params` 是否确实被该平台搜索入口支持。
+- 是否包含同时使用百度和 Bing 的 generic 任务。
 
-> 💡 _summary 必须精简，flow 只读前几十行就知道搜索计划怎么样。
+最后运行：
 
----
-
-#### data 部分（下游 platform 读这个执行）
-
-**必须写入的字段**：
-
-- `core_topic`：核心主题（字符串，✅必选）
-  - 透传，供下游需要时使用
-
-- `target_age`：目标年龄范围（字符串，✅必选）
-  - 透传，供质量评估时使用
-
-- `search_mode`：搜索模式（字符串，✅必选）
-  - standard / exhaustive
-
-- `search_tasks`：各平台搜索任务列表（数组，✅必选）
-  - 每个任务包含：
-    - `platform_id`：平台标识（字符串，✅必选）
-      - 示例："bilibili"
-    - `platform_name`：平台名称（字符串，✅必选）
-      - 示例："B站"
-    - `priority`：优先级（字符串，✅必选）
-      - P0 / P1 / P2
-    - `queries`：该平台的查询列表（数组，✅必选）
-      - 每个查询包含：
-        - `text`：查询关键词（字符串，✅必选）
-        - `tier`：优先级分级（字符串，✅必选）
-          - core / important / supplementary
-        - `format_hint`：资源形态提示（字符串，⚠️可选）
-    - `target_count`：预期召回数量（数字，✅必选）
-      - 该平台预期找多少条结果
-    - `search_params`：其他搜索参数（对象，⚠️可选）
-      - 如排序方式、时间范围等平台特定参数
-
-- `intent_data`：完整的 intent 数据（对象，⚠️可选）
-  - 把上游 intent 的 data 原样透传，供下游需要时使用
-
-- `strategy_notes`：策略说明（字符串，⚠️可选）
-  - 简单说明为什么这么选平台、为什么这么分配
-
----
-
-## 完成后
-
-### 1. 确认输出
-
-确认 `{session_dir}/{output_file}` 已成功写入。
-
-### 2. 通知 flow
-
-向 flow 返回执行结果，只返回 _summary 的内容：
-
-```
-✅ 已完成搜索策略制定
-📄 输出文件：{output_file}
-📊 摘要：
-- 选定平台：{platform_count} 个
-- 平台列表：{platforms 用顿号分隔}
-- 查询总数：{query_count} 个
-- 预期召回：{expected_results} 条
+```bash
+python scripts/validate_output.py \
+  {session_dir}/stage2_search_plan.json \
+  --intent {session_dir}/stage1_intent.json
 ```
 
-> 💡 **重要**：只返回 _summary，不要在上下文中展开完整的搜索任务。
-> 完整任务已经写入文件，下游 platform Skill 会去读并执行。
-
----
-
-## 关键原则
-
-### 平台选择原则
-1. **用户指定优先**：用户明确要什么平台/类型，就以那个为主
-2. **主题匹配**：不同主题选不同的主力平台，不搞一刀切
-3. **形态覆盖**：至少覆盖 2-3 种资源形态
-4. **质量分层**：官方站做标杆，视频平台为主力，图文音频做补充
-5. **数量适中**：不是平台越多越好，3-5 个精选平台效果最好
-
-### 关键词优化原则
-1. **平台适配**：不同平台有不同的搜索习惯，关键词要适配
-2. **年龄适配**：根据目标年龄调整关键词的表述方式
-3. **多角度**：同一个主题，从不同角度搜（教程/动画/故事/方法）
-4. **有梯度**：核心词 + 扩展词 + 长尾词，层层递进
-
----
-
-## 适用范围
-
-面向 3-12 岁儿童成长相关的所有学习需求，包括但不限于：
-- 学科学习（语文、数学、英语等）
-- 科普启蒙、人文历史
-- 艺术美育、思维训练
-- 习惯品格、情绪管理
-- 兴趣拓展、安全教育
-
----
-
-## 参考资料
-
-- **平台优势图谱**：`./references/config/platform-advantages.md`（各平台擅长领域）
-- **平台映射表**：`./references/config/platform-mapping.md`（平台与能力映射）
-- **搜索策略详解**：`./references/guides/search-strategy.md`（完整的策略制定方法）
-
-> 💡 参考资料放在最后，执行主流程时不需要看，需要时再查阅。
+验证只检查任务是否可执行，不替代模型的语义判断。完成后向 Flow 返回输出路径和 `_summary`。

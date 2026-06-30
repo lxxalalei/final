@@ -8,7 +8,7 @@
 搜索入口：
   https://open.163.com/newview/search/{关键词}
 
-输出格式遵循 shared/schemas/platform-search-contract.md 的 candidate 规范：
+输出格式遵循 resource-platforms/references/schemas/platform-search-contract.md：
   resource_id / title / source_url / platform 为必填字段。
 
 用法:
@@ -388,6 +388,7 @@ def search_via_html(
         source_url = raw.get("url") or f"{COURSE_URL_PREFIX}{pid}"
 
         subject = _infer_subject(title, description)
+        # 平台原生质量信号；最终评分由 resource-selector 统一完成。
         quality_score, quality_level = _estimate_quality(play_count, lessons, is_paid)
         download_feasibility = _estimate_feasibility(is_paid)
 
@@ -413,8 +414,12 @@ def search_via_html(
             "cover_url": cover_url,
             "total_results": total_count,
             # platform-search-contract 字段
-            "quality_level": quality_level,
-            "platform_quality_score": quality_score,
+            "platform_signals": {
+                "views": play_count,
+                "lessons": lessons,
+                "native_score": quality_score,
+                "native_level": quality_level,
+            },
             "download_feasibility": download_feasibility,
             "raw": {"pid": pid},
         }

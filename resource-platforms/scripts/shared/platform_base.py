@@ -771,12 +771,9 @@ class CLIBasedPlatformSkill(PlatformSkill):
         1. learning-resource-candidate/v1（旧格式，candidates 数组 + source_platform）
         2. 已符合契约的格式（results 数组 + platform）
         """
-        # 如果已经有 results 数组且符合契约，直接返回
-        if "results" in raw and isinstance(raw["results"], list):
-            return raw
-
-        # 从旧格式 candidates 数组转换
-        candidates = raw.get("candidates") or raw.get("items") or []
+        # 新旧格式都经过统一归一化，避免平台脚本输出的旧质量字段被误认为
+        # selector 的最终评分。
+        candidates = raw.get("results") or raw.get("candidates") or raw.get("items") or []
         if not candidates:
             return raw  # 无法识别格式，原样返回
 
@@ -786,14 +783,18 @@ class CLIBasedPlatformSkill(PlatformSkill):
             if normalized:
                 results.append(normalized)
 
-        return {
-            "platform": self.platform_name,
+        normalized_result = dict(raw)
+        normalized_result.pop("candidates", None)
+        normalized_result.pop("items", None)
+        normalized_result.update({
+            "platform": raw.get("platform", self.platform_name),
             "query": raw.get("query", intent.get("keywords", "")),
-            "total_found": raw.get("total", len(results)),
+            "total_found": raw.get("total_found", raw.get("total", len(results))),
             "returned_count": len(results),
-            "search_method": "api",
+            "search_method": raw.get("search_method", "api"),
             "results": results,
-        }
+        })
+        return normalized_result
 
     def _normalize_candidate(self, item: dict[str, Any]) -> dict[str, Any] | None:
         """将单个旧格式候选对象标准化为契约格式。"""
@@ -806,7 +807,12 @@ class CLIBasedPlatformSkill(PlatformSkill):
         else:
             resource_id = str(raw_id)
 
-        # download_feasibility: 中文标准化
+        source_url = item.get("source_url") or item.get("url") or ""
+        title = item.get("title") or ""
+        if not resource_id or not title or not source_url:
+            return None
+
+        # download_feasibility: 中文标准化；未知时保留 None，由 selector 处理。
         feasibility_map = {"high": "高", "medium": "中", "low": "低"}
         feasibility = item.get("download_feasibility") or item.get("downloadable")
         if isinstance(feasibility, bool):
@@ -814,29 +820,51 @@ class CLIBasedPlatformSkill(PlatformSkill):
         elif isinstance(feasibility, str):
             feasibility = feasibility_map.get(feasibility, feasibility)
         else:
-            feasibility = "中"
+            feasibility = None
 
         # resource_type → type（中文）
-        type_val = item.get("resource_type") or item.get("type") or "其他"
+        type_val = item.get("resource_type") or item.get("type")
+
+        native_score = item.get("platform_quality_score")
+        if native_score is None:
+            native_score = item.get("quality_score")
+        platform_signals = dict(item.get("platform_signals") or {})
+        inferred_signals = {
+            "views": item.get("view_count") or _extract_view_count(item),
+            "likes": item.get("like_count"),
+            "native_score": native_score,
+            "native_level": item.get("quality_level"),
+            "is_verified": item.get("is_verified"),
+        }
+        for key, value in inferred_signals.items():
+            if value is not None and key not in platform_signals:
+                platform_signals[key] = value
+
+        platform_resource_id = str(raw_id)
+        if ":" in platform_resource_id:
+            platform_resource_id = platform_resource_id.split(":", 1)[1]
 
         return {
             "resource_id": resource_id,
-            "title": item.get("title", ""),
+            "platform_resource_id": platform_resource_id,
+            "title": title,
             "type": type_val,
-            "subject": item.get("subject", ""),
+            "subject": item.get("subject"),
             "platform": platform,
-            "source_url": item.get("source_url", ""),
-            "source_name": item.get("source_name") or item.get("provider") or "",
-            "quality_level": item.get("quality_level", "B"),
-            "platform_quality_score": item.get("platform_quality_score",
-                                                _estimate_score(item)),
+            "source_url": source_url,
+            "source_name": item.get("source_name") or item.get("provider"),
             "download_feasibility": feasibility,
-            "description": item.get("description") or item.get("snippet", ""),
-            "age_range": item.get("age_range", ""),
-            "tags": item.get("tags", []),
-            "view_count": item.get("view_count") or _extract_view_count(item),
+            "description": item.get("description") or item.get("snippet"),
+            "age_range": item.get("age_range"),
+            "tags": item.get("tags") or [],
             "duration": item.get("duration"),
-            "language": item.get("language", "中文"),
+            "language": item.get("language"),
+            "is_free": item.get("is_free"),
+            "author": item.get("author"),
+            "publish_time": item.get("publish_time"),
+            "thumbnail_url": item.get("thumbnail_url"),
+            "platform_signals": platform_signals,
+            "raw_metadata": item.get("raw_metadata") or {},
         }
 
     def _empty_result(self, intent: dict, code: str, msg: str) -> dict:
