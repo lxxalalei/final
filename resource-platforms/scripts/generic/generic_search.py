@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import html
 import json
@@ -152,15 +153,26 @@ def search(query: str, engines: list[str], limit: int, timeout: float) -> dict[s
         "bing": (f"https://www.bing.com/search?q={quote_plus(query)}&count={per_engine_limit}", parse_bing_results),
         "baidu": (f"https://www.baidu.com/s?wd={quote_plus(query)}&rn={per_engine_limit}", parse_baidu_results),
     }
-    for engine in engines:
+    def run_engine(engine: str) -> tuple[str, list[dict[str, Any]]]:
         url, parser = endpoints[engine]
-        try:
-            page = _fetch(url, timeout)
-            _raise_if_blocked(page, engine)
-            engine_results = parser(page, query, per_engine_limit)
-        except Exception as exc:  # Network/search-engine failures are isolated per engine.
-            errors.append({"engine": engine, "message": f"{type(exc).__name__}: {exc}"})
-            continue
+        page = _fetch(url, timeout)
+        _raise_if_blocked(page, engine)
+        return engine, parser(page, query, per_engine_limit)
+
+    completed: dict[str, list[dict[str, Any]]] = {}
+    with ThreadPoolExecutor(max_workers=len(engines)) as executor:
+        futures = {executor.submit(run_engine, engine): engine for engine in engines}
+        for future in as_completed(futures):
+            engine = futures[future]
+            try:
+                _, engine_results = future.result()
+                completed[engine] = engine_results
+            except Exception as exc:  # Engine failures are isolated.
+                errors.append({"engine": engine, "message": f"{type(exc).__name__}: {exc}"})
+
+    # Merge in the requested engine order so concurrency does not make output unstable.
+    for engine in engines:
+        engine_results = completed.get(engine, [])
         for item in engine_results:
             canonical = _canonical_url(item["source_url"])
             if not canonical or canonical in seen:

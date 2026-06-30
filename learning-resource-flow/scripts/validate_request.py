@@ -42,18 +42,18 @@ def validate(document: dict[str, Any], path: Path | None = None) -> list[str]:
         errors.append("_meta.session_id 必须是非空字符串")
     if not isinstance(meta.get("created_at"), str) or not meta.get("created_at", "").strip():
         errors.append("_meta.created_at 必须是非空字符串")
-    if meta.get("skill") != "learning-resource-flow":
-        errors.append("_meta.skill 必须为 learning-resource-flow")
+    if meta.get("schema_version") != "request/v1":
+        errors.append("_meta.schema_version 必须为 request/v1")
+    if set(meta) - {"schema_version", "session_id", "created_at"}:
+        errors.append(f"_meta 存在未定义字段: {sorted(set(meta) - {'schema_version', 'session_id', 'created_at'})}")
     if path is not None and isinstance(session_id, str) and path.name == "request.json":
         if path.parent.name != session_id:
             errors.append("_meta.session_id 必须与 request.json 的父目录名一致")
 
-    allowed_data = {"schema_version", "raw_request", "conversation_evidence", "user_confirmed_facts"}
+    allowed_data = {"raw_request", "conversation_evidence"}
     extra_data = set(data) - allowed_data
     if extra_data:
         errors.append(f"data 存在未定义字段: {sorted(extra_data)}")
-    if data.get("schema_version") != "request/v1":
-        errors.append("data.schema_version 必须为 request/v1")
     if not isinstance(data.get("raw_request"), str) or not data.get("raw_request", "").strip():
         errors.append("data.raw_request 必须是非空字符串")
 
@@ -72,12 +72,6 @@ def validate(document: dict[str, Any], path: Path | None = None) -> list[str]:
                 errors.append(f"{prefix}.role 必须为 user 或 assistant")
             if not isinstance(item.get("content"), str) or not item.get("content", "").strip():
                 errors.append(f"{prefix}.content 必须是非空字符串")
-
-    facts = data.get("user_confirmed_facts", [])
-    if not isinstance(facts, list) or any(not isinstance(item, str) or not item.strip() for item in facts):
-        errors.append("data.user_confirmed_facts 必须是字符串数组，数组元素不得为空")
-    elif len(facts) != len(set(facts)):
-        errors.append("data.user_confirmed_facts 不得包含重复项")
 
     return errors
 

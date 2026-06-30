@@ -7,7 +7,7 @@
   b. 文件存在性     — 关键文件是否到位
   c. 契约一致性     — SKILL.md 中引用的契约路径是否有效
   d. Python 依赖    — resource-platforms/scripts/shared 模块是否可解析
-  e. 平台注册       — platform-registry/v2 中可用平台是否有真实搜索入口
+  e. 平台注册       — search-registry 中可用平台是否有真实 adapter
 
 退出码：
   0 — 全部 PASS（允许 WARN）
@@ -67,11 +67,10 @@ CRITICAL_FILES = [
     "library-manager/SKILL.md",
     "resource-platforms/SKILL.md",
     # self-contained contracts
-    "resource-platforms/references/schemas/resource-schema.md",
-    "resource-platforms/references/schemas/error-codes.md",
-    "resource-platforms/references/schemas/platform-search-contract.md",
-    "resource-platforms/references/schemas/platform-download-contract.md",
-    "resource-platforms/config/platform-registry.json",
+    "resource-platforms/references/search-interface.md",
+    "resource-platforms/references/search-errors.md",
+    "resource-platforms/config/search-registry.json",
+    "resource-platforms/scripts/run_search_plan.py",
     "resource-selector/references/quality-rubric.md",
     "resource-intent/schemas/input.schema.json",
     "resource-intent/schemas/output.schema.json",
@@ -84,10 +83,10 @@ CRITICAL_FILES = [
     "resource-search/examples/routing-cases.json",
     # shared modules（已迁移至 resource-platforms/scripts/shared/）
     "resource-platforms/scripts/shared/__init__.py",
-    "resource-platforms/scripts/shared/platform_base.py",
+    "resource-platforms/scripts/shared/search_adapter.py",
     "resource-platforms/scripts/shared/utils.py",
     "resource-platforms/scripts/shared/logger.py",
-    "resource-platforms/scripts/shared/wbi_sign.py",
+    "resource-platforms/scripts/bilibili/wbi_sign.py",
     "resource-platforms/scripts/shared/config_loader.py",
     # config files
     "config/settings.example.yaml",
@@ -95,10 +94,9 @@ CRITICAL_FILES = [
 
 # (d) 需要检查 import 的 shared 模块（仅标准库依赖部分）
 SHARED_MODULES = [
-    "shared.platform_base",
+    "shared.search_adapter",
     "shared.utils",
     "shared.logger",
-    "shared.wbi_sign",
     "shared.config_loader",
 ]
 
@@ -251,10 +249,9 @@ def check_python_imports(skip_deps: bool = False) -> list[CheckResult]:
 
     # 1) AST 静态分析：检查 import 语句
     shared_py_files = {
-        "resource-platforms/scripts/shared/platform_base.py": "shared.platform_base",
+        "resource-platforms/scripts/shared/search_adapter.py": "shared.search_adapter",
         "resource-platforms/scripts/shared/utils.py": "shared.utils",
         "resource-platforms/scripts/shared/logger.py": "shared.logger",
-        "resource-platforms/scripts/shared/wbi_sign.py": "shared.wbi_sign",
         "resource-platforms/scripts/shared/config_loader.py": "shared.config_loader",
     }
 
@@ -340,11 +337,11 @@ def check_platform_registry() -> list[CheckResult]:
     """(e) 检查平台注册表中的 available 搜索入口和平台文档。"""
     results = []
 
-    registry_file = _p("resource-platforms/config/platform-registry.json")
+    registry_file = _p("resource-platforms/config/search-registry.json")
     if not registry_file.is_file():
         results.append(CheckResult(
             "平台注册表", "FAIL",
-            f"platform-registry.json 不存在: {registry_file}"
+            f"search-registry.json 不存在: {registry_file}"
         ))
         return results
 
@@ -352,15 +349,14 @@ def check_platform_registry() -> list[CheckResult]:
         registry = json.loads(registry_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return [CheckResult("平台注册表", "FAIL", f"无法解析: {exc}")]
-    if registry.get("schema_version") != "platform-registry/v2" or registry.get("entry_base") != "resource-platforms":
-        return [CheckResult("平台注册表", "FAIL", "必须符合 platform-registry/v2 且 entry_base=resource-platforms")]
+    if registry.get("schema_version") != "platform-search-registry/v1":
+        return [CheckResult("平台注册表", "FAIL", "必须符合 platform-search-registry/v1")]
 
     platforms = registry.get("platforms", {})
     available = {
         platform_id: entry for platform_id, entry in platforms.items()
         if isinstance(entry, dict)
-        and isinstance(entry.get("search"), dict)
-        and entry["search"].get("status") == "available"
+        and entry.get("status") == "available"
     }
     if set(available) != set(ACTIVE_PLATFORMS):
         results.append(CheckResult(
@@ -371,8 +367,7 @@ def check_platform_registry() -> list[CheckResult]:
     for platform_id, entry in available.items():
         platform_dir = _p(f"resource-platforms/scripts/{platform_id}")
         platform_doc = _p(f"resource-platforms/references/platforms/{platform_id}.md")
-        search_capability = entry.get("search", {})
-        search_entry = _p(f"resource-platforms/{search_capability.get('entry', '')}")
+        search_entry = _p(f"resource-platforms/{entry.get('entry', '')}")
         if not platform_dir.is_dir():
             results.append(CheckResult(
                 f"平台 {platform_id}", "FAIL", f"脚本目录不存在: {platform_dir}"
@@ -389,8 +384,7 @@ def check_platform_registry() -> list[CheckResult]:
             results.append(CheckResult(f"平台 {platform_id}", "PASS"))
 
     for platform_id, entry in platforms.items():
-        search_capability = entry.get("search", {}) if isinstance(entry, dict) else {}
-        if search_capability.get("status") != "available" and search_capability.get("entry"):
+        if isinstance(entry, dict) and entry.get("status") != "available" and entry.get("entry"):
             results.append(CheckResult(
                 f"平台 {platform_id} 非 available", "WARN",
                 "非 available 平台配置了 search.entry，请确认状态"
@@ -417,17 +411,15 @@ def check_platform_registry() -> list[CheckResult]:
     sync_errors = []
     required_planning_fields = {
         "planning_status", "resource_types", "content_forms", "file_formats", "auth",
-        "download_support", "strengths", "limitations", "query_profile",
+        "strengths", "limitations", "query_profile",
     }
     for platform_id, planning in catalog_platforms.items():
         execution = platforms[platform_id]
         if not isinstance(planning, dict) or not required_planning_fields.issubset(planning):
             sync_errors.append(f"{platform_id}: 规划字段不完整")
             continue
-        if planning["planning_status"] != execution.get("search", {}).get("status"):
+        if planning["planning_status"] != execution.get("status"):
             sync_errors.append(f"{platform_id}: search status 不一致")
-        if planning["download_support"] != execution.get("download", {}).get("status"):
-            sync_errors.append(f"{platform_id}: download status 不一致")
     if sync_errors:
         results.append(CheckResult("Search 与 Platform 静态配置同步", "FAIL", "; ".join(sync_errors)))
     else:

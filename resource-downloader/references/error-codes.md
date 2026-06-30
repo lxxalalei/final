@@ -152,15 +152,13 @@
 ```json
 {
   "error_code": "ANTI_CRAWL_BLOCKED",
-  "error_message": "被B站反爬系统拦截，返回412状态码",
-  "error_details": {
+  "message": "被B站反爬系统拦截，返回412状态码",
+  "retryable": false,
+  "details": {
     "status_code": 412,
     "url": "https://www.bilibili.com/video/BV1xx",
     "retry_count": 2
-  },
-  "can_retry": false,
-  "suggested_action": "degrade_to_summary",
-  "degraded_content": "（如果已经提取到部分内容，放在这里）"
+  }
 }
 ```
 
@@ -169,15 +167,15 @@
 | 字段 | 类型 | 说明 | 是否必须 |
 |------|------|------|---------|
 | `error_code` | string | 标准错误码 | ✅ 必须 |
-| `error_message` | string | 人类可读的错误描述 | ✅ 必须 |
-| `error_details` | object | 详细错误信息，便于排查 | ⚠️ 建议 |
-| `can_retry` | boolean | 是否可以重试 | ✅ 必须 |
-| `suggested_action` | string | 建议的下一步动作 | ⚠️ 建议 |
-| `degraded_content` | string | 降级内容（如果已提取到部分） | ⚠️ 可选 |
+| `message` | string | 人类可读的错误描述 | ✅ 必须 |
+| `retryable` | boolean | 当前上下文是否可以重试 | ✅ 必须 |
+| `details` | object | 确有诊断价值时提供 | ⚠️ 可选 |
 
 ---
 
-## 建议的下一步动作（suggested_action）
+## 处理动作参考
+
+处理动作由收到错误的 Skill 根据错误码、阶段和重试次数决定，不写入通用错误对象。
 
 | 动作 | 说明 | 典型场景 |
 |------|------|---------|

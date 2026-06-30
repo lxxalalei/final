@@ -59,10 +59,8 @@ class TestSkillPipelineContract(unittest.TestCase):
             self.assertIn(upstream_file, read(f"{downstream_skill}/SKILL.md"))
 
     def test_platform_search_has_no_final_quality_fields_in_schema(self) -> None:
-        schema = read("resource-platforms/references/schemas/resource-schema.md")
-        stage3 = schema.split("## Stage 4", 1)[0]
-        self.assertIn("不应包含最终 `quality_score`", stage3)
-        self.assertIn("不应包含最终 `quality_score` 或 `quality_level`", stage3)
+        stage3 = read("resource-platforms/references/search-interface.md")
+        self.assertIn("质量评分由 Selector 完成", stage3)
 
     def test_selector_owns_business_filtering_and_scoring(self) -> None:
         selector = read("resource-selector/SKILL.md")
@@ -72,14 +70,14 @@ class TestSkillPipelineContract(unittest.TestCase):
     def test_platform_role_is_execution_only(self) -> None:
         platforms = read("resource-platforms/SKILL.md")
         self.assertIn("不负责", platforms)
-        self.assertIn("跨平台去重", platforms)
+        self.assertIn("跨平台相似去重", platforms)
         self.assertIn("最终质量评分", platforms)
 
     def test_data_flow_uses_six_stage_files(self) -> None:
-        guide = read("docs/data-flow-guide.md")
-        self.assertIn("request.json", guide)
+        contract = read("docs/pipeline-data-contract.md")
+        self.assertIn("request.json", contract)
         for _, _, filename in STAGES:
-            self.assertIn(filename, guide)
+            self.assertIn(filename, contract)
 
     def test_pipeline_data_contract_covers_every_handoff(self) -> None:
         contract_path = ROOT / "docs/pipeline-data-contract.md"
@@ -98,7 +96,7 @@ class TestSkillPipelineContract(unittest.TestCase):
             "archive/v1",
         ):
             self.assertIn(version, contract)
-        self.assertIn("字段传递与计数不变量", contract)
+        self.assertIn("引用与数量不变量", contract)
         self.assertIn("统一错误对象", contract)
 
     def test_flow_points_to_authoritative_data_contract(self) -> None:
@@ -107,6 +105,24 @@ class TestSkillPipelineContract(unittest.TestCase):
     def test_removed_duplicate_flow_draft_and_readme(self) -> None:
         self.assertFalse((ROOT / "learning-resource-flow/SKILL-建议版.md").exists())
         self.assertFalse((ROOT / "README.md").exists())
+
+    def test_redundant_documents_are_removed(self) -> None:
+        removed = [
+            "docs/data-flow-guide.md",
+            "resource-platforms/references/download-methods.md",
+            "resource-platforms/references/test-cases.md",
+            "resource-platforms/references/schemas/quality-rubric.md",
+        ]
+        for relative in removed:
+            self.assertFalse((ROOT / relative).exists(), relative)
+        self.assertIn("references/error-codes.md", read("resource-downloader/SKILL.md"))
+
+    def test_archive_only_keeps_historical_architecture(self) -> None:
+        archived_docs = {
+            path.relative_to(ROOT / "_archive").as_posix()
+            for path in (ROOT / "_archive").rglob("*.md")
+        }
+        self.assertEqual(archived_docs, {"系统架构说明.md"})
 
     def test_intent_and_search_have_versioned_contracts(self) -> None:
         required = [
@@ -118,7 +134,7 @@ class TestSkillPipelineContract(unittest.TestCase):
             "resource-search/schemas/output.schema.json",
             "resource-search/scripts/validate_output.py",
             "resource-search/config/platform-catalog.json",
-            "resource-platforms/config/platform-registry.json",
+            "resource-platforms/config/search-registry.json",
         ]
         for relative in required:
             self.assertTrue((ROOT / relative).is_file(), relative)
@@ -128,7 +144,7 @@ class TestSkillPipelineContract(unittest.TestCase):
         for phrase in (
             "执行 Flow 的模型必须先创建 `request.json`",
             "validate_request.py",
-            "clarification_question",
+            "data.clarification.question",
             "waiting_user",
             "不得调用 Search",
         ):
@@ -144,7 +160,7 @@ class TestSkillPipelineContract(unittest.TestCase):
         search = read("resource-search/SKILL.md")
         self.assertIn("去哪里搜、每处搜什么", search)
         self.assertIn("config/platform-catalog.json", search)
-        self.assertNotIn("../resource-platforms/config/platform-registry.json", search)
+        self.assertNotIn("../resource-platforms/config/search-registry.json", search)
         self.assertIn("searches[]", search)
         self.assertNotIn("coverage_plan", search)
         self.assertNotIn("coverage_ids", search)

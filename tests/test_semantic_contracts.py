@@ -32,7 +32,7 @@ class TestSemanticContracts(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.intent, cls.search = run_pipeline()[:2]
         cls.catalog = json.loads((ROOT / "resource-search/config/platform-catalog.json").read_text(encoding="utf-8"))
-        cls.platform_registry = json.loads((ROOT / "resource-platforms/config/platform-registry.json").read_text(encoding="utf-8"))
+        cls.platform_registry = json.loads((ROOT / "resource-platforms/config/search-registry.json").read_text(encoding="utf-8"))
 
     def test_json_schemas_parse(self) -> None:
         for relative in (
@@ -57,20 +57,14 @@ class TestSemanticContracts(unittest.TestCase):
         broken["data"]["queries"] = ["不应存在"]
         self.assertTrue(any("不得输出搜索执行字段" in error for error in intent_validator.validate(broken)))
 
-    def test_intent_summary_carries_clarification_question(self) -> None:
+    def test_intent_carries_only_one_clarification_question(self) -> None:
         needs = copy.deepcopy(self.intent)
-        question = "你更需要可打印的练习题，还是视频讲解？"
-        needs["_summary"].update({
-            "status": "needs_clarification",
-            "clarification_required": True,
-            "clarification_question": question,
-        })
+        question = "你想让孩子入门 Scratch、Python，还是机器人编程？"
+        needs["_summary"] = {"status": "needs_clarification", "question": question}
         needs["data"]["status"] = "needs_clarification"
         needs["data"]["clarification"] = {
-            "required": True,
             "question": question,
             "reason": "两种方向会改变搜索形态",
-            "missing_information": ["format_preferences"],
         }
         self.assertEqual(intent_validator.validate(needs), [])
 
@@ -80,26 +74,22 @@ class TestSemanticContracts(unittest.TestCase):
     def test_search_plan_contains_only_execution_orchestration_fields(self) -> None:
         self.assertEqual(
             set(self.search["data"]),
-            {"schema_version", "intent_ref", "strategy", "search_tasks"},
+            {"search_tasks"},
         )
         for task in self.search["data"]["search_tasks"]:
-            self.assertEqual(set(task), {"task_id", "platform", "priority", "reason", "searches"})
+            self.assertEqual(set(task), {"platform", "priority", "searches"})
             for search in task["searches"]:
-                self.assertEqual(set(search), {"query", "max_results", "params"})
+                self.assertTrue({"query", "max_results"}.issubset(search))
+                self.assertTrue(set(search).issubset({"query", "max_results", "params"}))
 
     def test_search_rejects_planned_platform(self) -> None:
         broken = copy.deepcopy(self.search)
         broken["data"]["search_tasks"][0]["platform"] = "baiduwenku"
-        broken["_summary"]["platforms"][0] = "baiduwenku"
         self.assertTrue(any("不可执行" in error for error in search_validator.validate(broken, self.catalog, self.intent)))
 
     def test_search_requires_generic_task(self) -> None:
         broken = copy.deepcopy(self.search)
-        generic = broken["data"]["search_tasks"].pop()
-        broken["_summary"]["platform_count"] = 2
-        broken["_summary"]["platforms"] = ["smartedu", "bilibili"]
-        broken["_summary"]["query_count"] -= len(generic["searches"])
-        broken["_summary"]["expected_results"] -= sum(item["max_results"] for item in generic["searches"])
+        broken["data"]["search_tasks"].pop()
         self.assertTrue(any("恰好包含一个 generic" in error for error in search_validator.validate(broken, self.catalog, self.intent)))
 
     def test_generic_requires_baidu_and_bing(self) -> None:
@@ -119,11 +109,15 @@ class TestSemanticContracts(unittest.TestCase):
         plan = copy.deepcopy(self.search)
         task = plan["data"]["search_tasks"][1]
         task["platform"] = "ximalaya"
-        task["task_id"] = "task-ximalaya-audio"
         for search in task["searches"]:
             search["params"] = {"core": "album", "free_only": True, "sort": "relevance"}
-        plan["_summary"]["platforms"][1] = "ximalaya"
         self.assertEqual(search_validator.validate(plan, self.catalog, self.intent), [])
+
+    def test_search_rejects_duplicate_platform_task(self) -> None:
+        broken = copy.deepcopy(self.search)
+        broken["data"]["search_tasks"][1]["platform"] = "smartedu"
+        errors = search_validator.validate(broken, self.catalog, self.intent)
+        self.assertTrue(any("平台任务重复" in error for error in errors))
 
     def test_search_rejects_duplicate_query_in_same_task(self) -> None:
         broken = copy.deepcopy(self.search)
@@ -139,8 +133,8 @@ class TestSemanticContracts(unittest.TestCase):
 
     def test_platform_registry_available_entries_have_scripts(self) -> None:
         for platform, entry in self.platform_registry["platforms"].items():
-            if entry["search"]["status"] == "available":
-                self.assertTrue((ROOT / "resource-platforms" / entry["search"]["entry"]).is_file(), platform)
+            if entry["status"] == "available":
+                self.assertTrue((ROOT / "resource-platforms" / entry["entry"]).is_file(), platform)
 
     def test_search_catalog_describes_semantics_and_real_parameters(self) -> None:
         for platform, entry in self.catalog["platforms"].items():
@@ -155,8 +149,7 @@ class TestSemanticContracts(unittest.TestCase):
         registry_platforms = self.platform_registry["platforms"]
         self.assertEqual(set(catalog_platforms), set(registry_platforms))
         for platform in catalog_platforms:
-            self.assertEqual(catalog_platforms[platform]["planning_status"], registry_platforms[platform]["search"]["status"])
-            self.assertEqual(catalog_platforms[platform]["download_support"], registry_platforms[platform]["download"]["status"])
+            self.assertEqual(catalog_platforms[platform]["planning_status"], registry_platforms[platform]["status"])
 
     def test_golden_case_sets_are_well_formed(self) -> None:
         intent_cases = json.loads((ROOT / "resource-intent/examples/golden-cases.json").read_text(encoding="utf-8"))

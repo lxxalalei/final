@@ -34,7 +34,7 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from shared.wbi_sign import wbi_sign, WBI_KEY_TABLE
+from wbi_sign import wbi_sign, WBI_KEY_TABLE
 from shared.utils import safe_filename
 from shared.logger import getLogger
 

@@ -7,26 +7,25 @@
   "properties": {
     "_meta": {
       "type": "object",
-      "required": ["stage", "skill", "schema_version"],
+      "required": ["schema_version", "session_id", "created_at"],
       "properties": {
-        "stage": {"const": 1},
-        "skill": {"const": "resource-intent"},
-        "schema_version": {"const": "intent-spec/v1"}
+        "schema_version": {"const": "intent-spec/v1"},
+        "session_id": {"type": "string", "minLength": 1},
+        "created_at": {"type": "string", "minLength": 1}
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "data": {
       "type": "object",
-      "required": ["schema_version", "status", "slots", "constraints", "search_concepts"],
+      "required": ["status", "slots", "constraints", "search_concepts"],
       "properties": {
-        "schema_version": {"const": "intent-spec/v1"},
         "status": {"const": "ready"},
-        "slots": {"type": "object"},
+        "slots": {"type": "object", "required": ["core_topic"]},
         "constraints": {"type": "object"},
         "search_concepts": {"type": "object"}
       },
       "additionalProperties": true
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

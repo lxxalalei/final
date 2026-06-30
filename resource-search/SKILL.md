@@ -84,13 +84,13 @@ standard 通常为主力平台生成 2-4 条查询、补充平台 1-3 条；exha
 
 - `query`：发送给平台的关键词。
 - `max_results`：该次调用最多返回多少条。
-- `params`：仅填写 catalog 中该平台 `search_parameters` 声明的参数。
+- `params`：仅在需要额外参数时填写，且只能使用 catalog 中该平台 `search_parameters` 声明的参数。
 
 当前只有少数平台有额外搜索参数：
 
 - ximalaya：`core`、`free_only`、`sort`。
 - generic：`engines`，固定同时包含 `baidu`、`bing`。
-- 其他平台当前只消费关键词和最大结果数，因此 `params` 使用 `{}`。
+- 其他平台当前只消费关键词和最大结果数，因此省略 `params`。
 
 不要输出平台脚本不会读取的虚构参数。认证信息由 Platform Skill 自己管理，不写进搜索计划。
 
@@ -99,29 +99,15 @@ standard 通常为主力平台生成 2-4 条查询、补充平台 1-3 条；exha
 ```json
 {
   "_meta": {
-    "stage": 2,
+    "schema_version": "search-plan/v1",
     "session_id": "继承上游",
-    "skill": "resource-search",
-    "created_at": "ISO 8601",
-    "input_from": "stage1_intent.json",
-    "schema_version": "search-plan/v1"
-  },
-  "_summary": {
-    "platform_count": 3,
-    "platforms": ["ximalaya", "bilibili", "generic"],
-    "query_count": 7,
-    "expected_results": 105
+    "created_at": "ISO 8601"
   },
   "data": {
-    "schema_version": "search-plan/v1",
-    "intent_ref": "stage1_intent.json",
-    "strategy": "古诗学习以音频听读和视频理解为主，全网搜索补充原文、注释和其他公开资料。",
     "search_tasks": [
       {
-        "task_id": "task-ximalaya-audio",
         "platform": "ximalaya",
         "priority": "P0",
-        "reason": "古诗朗诵、跟读和背诵音频是该平台的优势内容",
         "searches": [
           {
             "query": "小学古诗朗诵专辑",
@@ -136,21 +122,17 @@ standard 通常为主力平台生成 2-4 条查询、补充平台 1-3 条；exha
         ]
       },
       {
-        "task_id": "task-bilibili-video",
         "platform": "bilibili",
         "priority": "P0",
-        "reason": "动画和讲解适合帮助孩子理解古诗内容与意境",
         "searches": [
-          {"query": "小学古诗动画", "max_results": 15, "params": {}},
-          {"query": "儿童古诗意境讲解", "max_results": 15, "params": {}},
-          {"query": "小学生古诗逐句赏析", "max_results": 15, "params": {}}
+          {"query": "小学古诗动画", "max_results": 15},
+          {"query": "儿童古诗意境讲解", "max_results": 15},
+          {"query": "小学生古诗逐句赏析", "max_results": 15}
         ]
       },
       {
-        "task_id": "task-generic-web",
         "platform": "generic",
         "priority": "P1",
-        "reason": "补充原文注释、译文、学习资料和未接入站点",
         "searches": [
           {
             "query": "小学古诗 原文 注释 译文",
@@ -169,7 +151,7 @@ standard 通常为主力平台生成 2-4 条查询、补充平台 1-3 条；exha
 }
 ```
 
-`expected_results` 是所有 `searches[].max_results` 的合计上限，不代表实际结果数，也不代表最终筛选数量。
+每个平台只创建一个任务。平台分工和扩展方向应体现在查询差异中，不额外输出 `strategy`、`reason` 或 `task_id`；这些字段没有执行消费者，只会把模型思考过程混入接口。
 
 ## 完成前自检
 
@@ -188,4 +170,4 @@ python scripts/validate_output.py \
   --intent {session_dir}/stage1_intent.json
 ```
 
-验证只检查任务是否可执行，不替代模型的语义判断。完成后向 Flow 返回输出路径和 `_summary`。
+验证只检查任务是否可执行，不替代模型的语义判断。完成后向 Flow 返回输出路径。

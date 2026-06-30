@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
-"""Weibo（微博）平台适配器 — 实现 PlatformSkill 接口。
-
-搜索：调用 weibo_dl.py search 子命令（T7 实现）
-下载：调用 weibo_dl.py download 子命令
-"""
+"""Weibo search adapter. The legacy mixed CLI is invoked only with search."""
 
 from __future__ import annotations
 
-from shared.platform_base import CLIBasedPlatformSkill, _platforms_base_dir
+from shared.search_adapter import CLISearchAdapter, SCRIPTS_DIR
 
 
-class WeiboSkill(CLIBasedPlatformSkill):
+class WeiboSearchAdapter(CLISearchAdapter):
     """微博平台 Skill。"""
 
     platform_name = "weibo"
 
-    def __init__(self) -> None:
-        super().__init__()
-        # weibo 的搜索在 weibo_dl.py 中（非 *_search.py 约定），显式指定
-        base = _platforms_base_dir()
-        self._search_script = base / "weibo" / "weibo_dl.py"
+    search_script = SCRIPTS_DIR / "weibo" / "weibo_dl.py"
+
+
+ADAPTER = WeiboSearchAdapter()

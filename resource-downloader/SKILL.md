@@ -1,484 +1,118 @@
 ---
 name: resource-downloader
-description: 儿童学习资源下载调度器 Skill，负责根据资源平台和类型，调度对应的平台 Skill 或通用下载工具执行下载，支持重试、降级、错误处理等机制。
+description: 学习资源下载调度器。读取用户已确认的资源，按平台注册表选择专属下载能力或通用下载方式，执行重试和 Level 0-3 降级，并输出完整下载结果。用于流水线 Stage 5，不负责搜索、筛选、评分或归档。
 ---
 
-# resource-downloader · 下载调度器
+# resource-downloader
 
-## 概述
+## 职责
 
-本 Skill 是流水线 **stage 5**，负责下载任务的调度与管理。
-它不直接执行具体下载，而是根据资源的平台、类型，调度对应的平台 Skill 或通用下载工具。
+负责：
 
-**上游**：resource-selector（候选展示与用户选择）
-**下游**：各 platform skill（平台执行层）、通用下载工具
+- 读取 `stage4_selection.json` 中用户确认的资源 ID，并从 `stage3_search_results.json` 取得平台和来源信息。
+- 根据 `platform` 选择专属 Platform 下载入口或通用方式。
+- 控制批量下载、重试、超时、进度和降级。
+- 将文件写入 `{session_dir}/downloads/`。
+- 保留成功、降级和失败资源，写入 `stage5_download.json`。
 
----
+不负责重新搜索、重新评分、替用户改变选择或把文件移入正式资料库。
 
-## 核心职责
+Stage 4→5 的 envelope、结果字段和引用不变量以 `../docs/pipeline-data-contract.md` 为准。
 
-1. **平台路由**：根据资源平台，调度对应的平台 Skill 执行下载
-2. **进度跟踪**：跟踪每个资源的下载状态，实时反馈进度
-3. **错误处理**：根据错误码判断是否可重试，执行重试策略
-4. **分级降级**：下载失败时，按四级降级路径逐步降低预期
-5. **结果汇总**：汇总所有资源的下载结果，结构化输出
-6. **通用兜底**：没有对应平台 Skill 时，走通用下载通道
+## 输入
 
----
+- 会话目录：绝对 `{session_dir}`。
+- 输入文件：`{session_dir}/stage4_selection.json` 和 `stage3_search_results.json`。
+- 输出文件：`{session_dir}/stage5_download.json`，Schema 为 `download/v1`。
+- 下载目录：`{session_dir}/downloads/`。
 
-## 输入格式
+只有 Stage 4 `data.status=selected` 且 `data.selected` 非空时执行。每个选择必须能按 `resource_id` 在 Stage 3 找到唯一资源。
 
-Stage 4→5 的文件结构、下载状态和条件字段以 `../docs/pipeline-data-contract.md` 为统一契约。
+## 执行流程
 
-接收来自 resource-selector 的选定资源列表，每个资源符合统一元数据规范。
+### 1. 确定下载通道
 
-**输入示例：**
-```json
-{
-  "selected_count": 5,
-  "selection_mode": "manual",
-  "resources": [
-    {
-      "resource_id": "bilibili:BV1xx411c7mD",
-      "title": "小学必背古诗文动画（228集全）",
-      "type": "视频",
-      "subject": "语文",
-      "platform": "bilibili",
-      "source_url": "https://www.bilibili.com/video/BV1xx411c7mD",
-      "source_name": "B站",
-      "quality_level": "S",
-      "download_feasibility": "中",
-      "description": "动画形式讲解小学必背古诗，覆盖全部228首",
-      "tags": ["古诗", "动画", "系统课程"]
-    },
-    ...
-  ]
-}
-```
+Downloader 不读取 Platform 的搜索注册表。平台专属下载入口将在 Downloader 自己的实现阶段维护；当前只能根据 `references/download-methods.md` 选择已有通用方法。需要 Cookie、token 或浏览器会话时，只通过环境变量、配置或运行时会话传递，不写入阶段文件。
 
----
+平台入口、认证和限制需要进一步确认时，按需读取 `../resource-platforms/references/platforms/{platform}.md`。
 
-## 下载调度流程
+### 2. 执行与进度
 
-### 第一步：平台路由判断
+- 逐条处理用户选择，必要时限制并发。
+- 文件先写入临时目录，完成后再移动到 `{session_dir}/downloads/`。
+- 每条资源始终产生一条结果，不因失败从数组删除。
+- 进度只展示当前数量、标题和状态，不输出凭证或内部堆栈。
 
-对每个资源，根据 `platform` 字段判断走哪条通道：
+### 3. 重试
 
-```
-资源 platform 字段
-    ↓
-有对应 platform skill？ → 是 → 调用 platform skill 下载
-    ↓ 否
-是视频/音频类？ → 是 → 用 yt-dlp 通用下载
-    ↓ 否
-是直链文件？ → 是 → 用 wget/curl 直接下载
-    ↓ 否
-是网页/图文？ → 是 → 网页提取/转换保存
-    ↓ 否
-降级为：保存链接 + 摘要
-```
+根据统一错误对象的 `retryable` 决定是否重试：
 
-### 第二步：批量调度
+- 网络超时、连接失败：有限次数退避重试。
+- 限流：降低频率并延迟重试。
+- 登录过期：存在安全刷新路径时重试一次。
+- 内容不存在、付费限制、DRM、验证码：不做无意义重试，直接进入降级或失败。
 
-- 按平台分组，同平台的一起调度
-- 支持并行下载（但不要太多并发，避免反爬）
-- 建议并发数：2-3 个同时下载
+完整下载错误码与建议动作读取 `references/error-codes.md`。
 
-### 第三步：进度跟踪
+### 4. Level 0-3 降级
 
-每个资源跟踪下载状态：
-- 等待中 → 下载中 → 成功 / 失败 / 降级
+| 等级 | 结果 |
+|---|---|
+| Level 0 | 完整原资源 |
+| Level 1 | 官方预览、低清晰度或部分章节文件 |
+| Level 2 | 可用正文、字幕、目录、音频或核心内容 |
+| Level 3 | 元数据、摘要和来源链接 |
 
-### 第四步：失败重试
+降级结果必须标记 `download_status=degraded`，说明原因，不能伪装成完整下载。具体资源类型的下载和转换方式见 `references/download-methods.md`。
 
-根据错误类型决定是否重试，详见「重试策略」章节。
+### 5. 写入结果
 
-### 第五步：分级降级
+每个选择只写一条增量结果，不复制 Stage 3 或 Stage 4 字段：
 
-重试后仍失败，进入四级降级路径，详见「四级降级体系」章节。
+- `resource_id`
+- `download_status`
+- `files`
+- `degraded_level`（仅降级时）
+- `error`（降级或失败时）
 
-### 第六步：结果汇总
-
-所有资源处理完后，汇总结果输出。
-
----
-
-## 平台路由规则
-
-### 有专属 Skill 的平台（优先走平台通道）
-
-| 平台 | Skill 路径 | Skill 状态 | 说明 |
-|------|-----------|-----------|------|
-| bilibili | `../resource-platforms/references/platforms/bilibili.md` | ✅ 可用 | B站专属，搜索+下载+反爬 |
-| ximalaya | `../resource-platforms/references/platforms/ximalaya.md` | ⚠️ 仅搜索 | 下载走通用方式或降级 |
-| smartedu | `../resource-platforms/references/platforms/smartedu.md` | ✅ 可用 | 国家中小学智慧教育平台 |
-| baiduwenku | `platform-baiduwenku` | 规划中 | 百度文库文档下载 |
-| zhihu | `../resource-platforms/references/platforms/zhihu.md` | ✅ 可用 | 知乎图文提取 |
-| douyin | `../resource-platforms/references/platforms/douyin.md` | ✅ 可用 | 抖音专属，f2 引擎搜索+无水印下载 |
-| weibo | `../resource-platforms/references/platforms/weibo.md` | ✅ 可用 | 微博专属，ajax 搜索+用户图文下载 |
-| open163 | `../resource-platforms/references/platforms/open163.md` | ⚠️ 仅搜索 | 下载走通用方式或降级 |
-
-> 注：标记「✅ 可用」的平台已接入，优先走平台专属通道；其余走通用兜底通道。
-
-### 通用下载通道
-
-没有专属 Skill 的平台，按资源类型走通用通道：
-
-| 资源类型 | 通用工具 | 说明 |
-|---------|---------|------|
-| 视频 | yt-dlp | 支持大部分视频平台 |
-| 音频 | yt-dlp + ffmpeg | 从视频提取或直接下载音频 |
-| 文档直链 | wget / curl | PDF、DOC、PPT 等直链 |
-| 图文网页 | 正文提取 + 转 MD/PDF | 保存网页内容 |
-| 图片 | wget 批量下载 | 图集下载 |
-
----
-
-## 重试策略
-
-### 错误类型与重试次数
-
-根据错误码体系（详见下方「错误码速查」）：
-
-| 错误类型 | 最大重试次数 | 初始延时 | 递增方式 |
-|---------|-------------|---------|---------|
-| 网络超时/连接失败 | 3 次 | 1 秒 | 指数递增（1s → 3s → 9s） |
-| 频率限制（反爬） | 2 次 | 10 秒 | 线性递增（10s → 20s） |
-| 部分下载/文件损坏 | 2 次 | 0 秒 | 立即重试（断点续传） |
-| 内容为空/不完整 | 1 次 | 2 秒 | 固定延时 |
-| 反爬拦截（验证码等） | 1 次 | 5 秒 | 换策略后重试 |
-| 付费/DRM/权限不足 | 0 次 | - | 直接降级，不重试 |
-| 内容已删除/不存在 | 0 次 | - | 直接降级，不重试 |
-
-### 重试原则
-
-1. **网络问题必重试**：超时、连接失败等网络问题，一定要重试
-2. **反爬问题谨慎重试**：可能触发更严的限制，重试次数少
-3. **内容问题不重试**：付费、删除、不存在，重试也没用
-4. **累计3次失败才降级**：给足机会，但也不无限重试
-
----
-
-## 四级降级体系
-
-下载失败时，按以下四级逐步降级，尽量获取最多信息：
-
-| 等级 | 级别 | 说明 | 信息完整度 |
-|------|------|------|-----------|
-| Level 0 | 完整版本 | 原始文件完整下载 | 100% |
-| Level 1 | 预览版本 | 预览版/低清晰度/部分章节 | 60-80% |
-| Level 2 | 核心摘要 | 目录、简介、核心要点 | 20-40% |
-| Level 3 | 来源链接 | 只保存标题、链接、简介 | 5-10% |
-
-### 不同资源类型的降级路径
-
-#### 视频类
-```
-Level 0：高清完整下载（默认）
-    ↓ 失败
-Level 1：降低清晰度重试（720p → 480p → 360p）
-    ↓ 失败
-Level 2：提取字幕 + 章节大纲 + 简介
-    ↓ 失败
-Level 3：保存标题 + 链接 + 简介 + 观看指引
-```
-
-#### 音频类
-```
-Level 0：完整音质下载（默认）
-    ↓ 失败
-Level 1：降低音质重试（320k → 128k）
-    ↓ 失败
-Level 2：提取章节列表 + 简介
-    ↓ 失败
-Level 3：保存标题 + 链接 + 简介
-```
-
-#### 文档类
-```
-Level 0：原文件完整下载（默认）
-    ↓ 失败
-Level 1：预览页完整提取（截图或文字）
-    ↓ 失败
-Level 2：目录 + 核心内容摘要
-    ↓ 失败
-Level 3：保存标题 + 链接 + 简介 + 获取指引
-```
-
-#### 图文类
-```
-Level 0：正文完整提取转 Markdown（默认）
-    ↓ 失败
-Level 1：整页截图转 PDF
-    ↓ 失败
-Level 2：核心段落摘要
-    ↓ 失败
-Level 3：保存标题 + 链接 + 摘要
-```
-
-### 降级原则
-
-1. **最大化提取**：能拿完整不拿摘要，能拿原文件不拿转换格式
-2. **明确标注**：降级内容必须明确标注「非完整版本」
-3. **部分可用也输出**：不要因为不完整就直接放弃
-4. **失败替代推荐**：所有失败资源标配 1-2 个同主题同类型替代推荐
-
----
-
-## 输出格式
-
-所有资源处理完成后，输出结构化的下载结果。
-
-**输出格式（符合统一元数据规范）：**
-```json
-{
-  "total_count": 5,
-  "success_count": 3,
-  "degraded_count": 1,
-  "failed_count": 1,
-  "resources": [
-    {
-      "resource_id": "bilibili:BV1xx411c7mD",
-      "title": "小学必背古诗文动画（228集全）",
-      "type": "视频",
-      "platform": "bilibili",
-      "source_url": "https://www.bilibili.com/video/BV1xx411c7mD",
-      "quality_level": "S",
-      "download_status": "success",
-      "degraded_level": "Level 0",
-      "file_path": "/downloads/古诗/小学必背古诗文动画.mp4",
-      "file_size": 156000000,
-      "fetch_time": "2026-06-24 15:30:00",
-      "fetch_method": "yt-dlp",
-      "duration": "共228集"
-    },
-    {
-      "resource_id": "baiduwenku:xxx",
-      "title": "小学古诗知识点汇总",
-      "type": "文档",
-      "platform": "baiduwenku",
-      "source_url": "https://wenku.baidu.com/view/xxx",
-      "quality_level": "A",
-      "download_status": "degraded",
-      "degraded_level": "Level 2",
-      "error_code": "CONTENT_PREMIUM_ONLY",
-      "error_message": "需要付费才能查看完整内容",
-      "degraded_content": "已提取目录和前3章核心内容，保存为摘要文档",
-      "file_path": "/downloads/古诗/小学古诗知识点汇总-摘要.md"
-    },
-    {
-      "resource_id": "xxx",
-      "title": "xxx",
-      "type": "视频",
-      "platform": "xxx",
-      "source_url": "xxx",
-      "quality_level": "B",
-      "download_status": "failed",
-      "degraded_level": "Level 3",
-      "error_code": "CONTENT_NOT_FOUND",
-      "error_message": "视频已被删除",
-      "alternative_recommendations": [
-        { "title": "替代资源1", "url": "xxx", "reason": "同主题，质量更高" },
-        { "title": "替代资源2", "url": "xxx", "reason": "同类型，下载难度低" }
-      ]
-    }
-  ]
-}
-```
-
-### 下载状态说明
-
-| 状态 | 说明 |
-|------|------|
-| `success` | 完整下载成功（Level 0） |
-| `degraded` | 降级获取（Level 1/2），部分内容可用 |
-| `failed` | 下载失败，只保留了链接和摘要（Level 3） |
-
----
-
-## 错误码速查
-
-> 完整错误码体系见 `references/error-codes.md`。以下是模型执行下载时需要快速查阅的核心部分。
-
-### 7 类前缀
-
-| 前缀 | 场景 | 可重试？ |
-|------|------|---------|
-| `NETWORK_` | 超时、连接失败、DNS、SSL | ✅ 重试 2-3 次 |
-| `ANTI_CRAWL_` | 限流、拦截、验证码、IP封禁 | 限流重试，其余不重试 |
-| `AUTH_` | 需登录、登录过期、权限不足、会员专享 | 过期重试1次，其余不重试 |
-| `CONTENT_` | 不存在、已删除、私有、付费、DRM、地区限制 | ❌ 不重试，直接降级 |
-| `PARSE_` | 结构变化、格式不支持、内容为空 | 空内容重试1次，其余不重试 |
-| `DOWNLOAD_` | 下载失败、部分下载、文件损坏、磁盘满 | 损坏/部分重试1-2次，磁盘满不重试 |
-| `SYSTEM_` | 工具缺失、配置错误、未知错误 | 未知错误重试1次 |
-
-### 常用错误码
-
-| 错误码 | 场景 | 重试 | 降级动作 |
-|--------|------|------|---------|
-| `NETWORK_TIMEOUT` | 请求超时 | ✅ 3次 | → degrade_to_preview |
-| `ANTI_CRAWL_RATE_LIMITED` | 被限流 | ✅ 2次（加延时） | → retry_with_delay |
-| `ANTI_CRAWL_CAPTCHA` | 需验证码 | ❌ | → need_user_action |
-| `AUTH_LOGIN_REQUIRED` | 需登录 | ❌ | → need_user_action |
-| `AUTH_MEMBER_ONLY` | 会员专享 | ❌ | → degrade_to_summary |
-| `CONTENT_NOT_FOUND` | 内容不存在 | ❌ | → skip |
-| `CONTENT_REMOVED` | 已下架 | ❌ | → skip |
-| `CONTENT_PREMIUM_ONLY` | 付费内容 | ❌ | → degrade_to_summary |
-| `CONTENT_DRM_PROTECTED` | DRM保护 | ❌ | → degrade_to_link |
-| `PARSE_STRUCTURE_CHANGED` | 页面结构变了 | ❌ | → degrade_to_link |
-| `DOWNLOAD_FILE_CORRUPTED` | 文件损坏 | ✅ 1次 | → 重新下载 |
-| `DOWNLOAD_DISK_FULL` | 磁盘满 | ❌ | → need_user_action |
-
-### 错误返回格式
-
-每个失败/降级的资源必须包含：
-
-```json
-{
-  "error_code": "CONTENT_PREMIUM_ONLY",
-  "error_message": "需要付费才能查看完整内容",
-  "can_retry": false,
-  "suggested_action": "degrade_to_summary",
-  "degraded_content": "已提取目录和核心摘要"
-}
-```
-
----
-
-## 下载进度反馈
-
-### 实时反馈
-
-下载过程中，定期向用户反馈进度：
-
-```
-📥 正在下载，已完成 2/5：
-
-✅ 完成：小学必背古诗文动画（B站）
-✅ 完成：宝宝巴士国学古诗词（喜马拉雅）
-⏳ 下载中：唐诗三百首精讲（网易公开课）... 60%
-⏳ 等待中：小学古诗知识点汇总（百度文库）
-⏳ 等待中：古诗手抄报模板（小红书）
-
-预计还需要 2-3 分钟...
-```
-
-### 完成汇总
-
-全部完成后，给出汇总：
-
-```
-✅ 下载完成！共 5 个资源：
-
-📊 结果统计：
-• 完整下载：3 个
-• 降级获取：1 个（只拿到了摘要）
-• 下载失败：1 个（已删除）
-
-📁 保存位置：/downloads/古诗/
-
-需要我帮您归档到资料库吗？
-```
-
----
-
-## 文件命名规范
-
-下载后的文件必须用有意义的中文命名，不能用默认的 ID 或乱码。
-
-### 命名格式
-
-```
-[主题]-[资源名]-[补充说明].[扩展名]
-```
-
-**示例：**
-- `古诗-小学必背古诗文动画-228集全.mp4`
-- `古诗-宝宝巴士国学古诗词-100集.mp3`
-- `数学-四则混合运算练习题-100道含答案.pdf`
-
-### 命名原则
-
-1. **中文为主**：用户一看就知道是什么
-2. **包含主题**：方便后续分类归档
-3. **关键信息**：集数、含答案等重要信息带上
-4. **不要太长**：控制在 30-50 字以内
-
----
-
-## 参考资料
-
-- `references/download-methods.md` - 通用下载工具使用说明（兜底方案）
-- `references/error-codes.md` - 完整错误码体系（7类前缀+30+错误码+重试策略+降级路径）
-- `references/troubleshooting.md` - 常见下载问题排查
-
----
-
-## 读写文件
-
-### 1. 获取任务路径
-- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage4_selection.json`）、输出文件名（通常 `stage5_download.json`）
-
-### 2. 读取上游数据
-- 读取 `{session_dir}/stage4_selection.json` 的 `data` 部分
-- 提取用户选中的资源列表
-
-### 3. 执行下载并写入结果
-
-下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将以下结构写入 `{session_dir}/stage5_download.json`：
+Level 2/3 的正文、摘要或来源记录先保存成文件，再把路径写入 `files`，不要把大段内容嵌入阶段 JSON。
 
 ```json
 {
   "_meta": {
-    "stage": 5,
-    "session_id": "{session_id}",
-    "skill": "resource-downloader",
-    "created_at": "ISO时间",
-    "input_from": "stage4_selection.json",
-    "schema_version": "download/v1"
+    "schema_version": "download/v1",
+    "session_id": "继承上游",
+    "created_at": "ISO 8601"
   },
   "_summary": {
-    "total_count": 5,
-    "success_count": 3,
-    "degraded_count": 1,
-    "failed_count": 1
+    "success_count": 1,
+    "degraded_count": 0,
+    "failed_count": 0
   },
   "data": {
-    "schema_version": "download/v1",
-    "total_count": 5,
-    "success_count": 3,
-    "degraded_count": 1,
-    "failed_count": 1,
-    "resources": [
+    "results": [
       {
-        "// 说明": "保留 stage4 全部字段 + 新增下载结果字段",
-        "resource_id": "...",
-        "title": "...",
-        "platform": "...",
-        "source_url": "...",
-        "...": "（stage4 的所有字段原样保留）",
-
-        "download_status": "success / degraded / failed",
-        "degraded_level": "Level 0 / Level 1 / Level 2 / Level 3",
-        "file_path": "{session_dir}/downloads/xxx.mp4",
-        "file_size": 156000000,
-        "file_format": "mp4",
-        "fetch_time": "2026-06-26T15:00:00+08:00",
-        "fetch_method": "获取方式说明",
-
-        "degraded_content": null,
-        "error": null
+        "resource_id": "bilibili:BV1example",
+        "download_status": "success",
+        "files": ["/absolute/session/downloads/example.mp4"]
       }
     ]
   }
 }
 ```
 
-- `_summary`（flow 读这个）：总数、成功/降级/失败各多少
-- `data`（下游 library 读这个）：每个资源在上游字段基础上新增——`download_status`（success/degraded/failed）、`degraded_level`（Level 0-3）、`file_path`（本地路径）、`file_size`（字节）、`file_format`、`fetch_time`、`fetch_method`、`degraded_content` 和统一 `error` 对象；不适用字段写 `null`
-- **保留规则**：上游全部字段原样带过来；`failed` 的资源也要写进文件
+## 完成条件
 
-### 4. 完成后
+- `data.results.length` 等于 Stage 4 的已选资源数。
+- 每个已选 `resource_id` 恰好有一个结果。
+- 成功或降级文件真实存在；失败结果的 `files=[]`。
+- 所有失败或降级均有结构化原因。
+- `_summary` 的三项计数必须能从 `data.results` 核对；只向 Flow 返回 `_summary` 和输出路径。
 
-- 提示 flow 调用 `library-manager` 继续执行
-- 只返回 `_summary`，不在上下文中展开完整 data
+## 参考资料
+
+- `../docs/pipeline-data-contract.md`：Stage 5 权威数据契约。
+- `references/download-methods.md`：通用下载、转换和平台方法。
+- `references/troubleshooting.md`：具体故障排查。
+- `references/platform-download-contract.md`：未来的平台下载接口；本轮不实现下载入口。
+- `references/error-codes.md`：下载错误码。

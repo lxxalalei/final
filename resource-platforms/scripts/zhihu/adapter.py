@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Zhihu（知乎）平台适配器 — 实现 PlatformSkill 接口。
-
-搜索：调用 zhihu_search.py search 子命令
-下载：调用 zhihu_dl.py download 子命令
-"""
+"""Zhihu search-only adapter."""
 
 from __future__ import annotations
 
-from shared.platform_base import CLIBasedPlatformSkill
+from shared.search_adapter import CLISearchAdapter, SCRIPTS_DIR
 
 
-class ZhihuSkill(CLIBasedPlatformSkill):
+class ZhihuSearchAdapter(CLISearchAdapter):
     """知乎平台 Skill。"""
 
     platform_name = "zhihu"
+    search_script = SCRIPTS_DIR / "zhihu" / "zhihu_search.py"
+
+
+ADAPTER = ZhihuSearchAdapter()

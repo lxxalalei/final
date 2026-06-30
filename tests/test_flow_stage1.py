@@ -23,18 +23,16 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(validator)
 
 
-def valid_request(session_id: str = "20260630-1030-math-grade3") -> dict:
+def valid_request(session_id: str = "20260630-1030-math-grade4") -> dict:
     return {
         "_meta": {
+            "schema_version": "request/v1",
             "session_id": session_id,
             "created_at": "2026-06-30T10:30:00+08:00",
-            "skill": "learning-resource-flow",
         },
         "data": {
-            "schema_version": "request/v1",
-            "raw_request": "给三年级孩子找数学练习题",
+            "raw_request": "四年级数学课程",
             "conversation_evidence": [],
-            "user_confirmed_facts": [],
         },
     }
 
@@ -44,7 +42,7 @@ class TestFlowStage1Request(unittest.TestCase):
         self.assertEqual(validator.validate(valid_request()), [])
 
     def test_cli_validates_snapshot(self) -> None:
-        session_id = "20260630-1030-math-grade3"
+        session_id = "20260630-1030-math-grade4"
         with tempfile.TemporaryDirectory() as temp:
             session_dir = Path(temp) / session_id
             session_dir.mkdir()
@@ -65,7 +63,6 @@ class TestFlowStage1Request(unittest.TestCase):
             {"role": "assistant", "content": "更需要试卷还是视频讲解？"},
             {"role": "user", "content": "主要要 PDF 试卷"},
         ]
-        request["data"]["user_confirmed_facts"] = ["主要需要 PDF 试卷"]
         self.assertEqual(validator.validate(request), [])
 
     def test_rejects_invalid_evidence_role(self) -> None:

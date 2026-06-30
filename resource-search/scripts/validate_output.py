@@ -35,30 +35,23 @@ def _matches_type(value: Any, expected: str) -> bool:
 def validate(document: dict[str, Any], catalog: dict[str, Any], intent: dict[str, Any] | None = None) -> list[str]:
     errors: list[str] = []
     meta = document.get("_meta")
-    summary = document.get("_summary")
     data = document.get("data")
     if not isinstance(meta, dict):
         return ["缺少 object: _meta"]
-    if not isinstance(summary, dict):
-        return ["缺少 object: _summary"]
     if not isinstance(data, dict):
         return ["缺少 object: data"]
 
-    expected_meta = {
-        "stage": 2,
-        "skill": "resource-search",
-        "input_from": "stage1_intent.json",
-        "schema_version": "search-plan/v1",
-    }
-    for key, expected in expected_meta.items():
-        if meta.get(key) != expected:
-            errors.append(f"_meta.{key} 必须为 {expected!r}")
-    if data.get("schema_version") != "search-plan/v1":
-        errors.append("data.schema_version 必须为 search-plan/v1")
-    if data.get("intent_ref") != "stage1_intent.json":
-        errors.append("data.intent_ref 必须为 stage1_intent.json")
-    if not isinstance(data.get("strategy"), str) or not data["strategy"].strip():
-        errors.append("data.strategy 必须是非空字符串")
+    if set(document) != {"_meta", "data"}:
+        errors.append("根节点只能包含 _meta 和 data")
+    if set(meta) != {"schema_version", "session_id", "created_at"}:
+        errors.append("_meta 只能包含 schema_version、session_id、created_at")
+    if meta.get("schema_version") != "search-plan/v1":
+        errors.append("_meta.schema_version 必须为 search-plan/v1")
+    for key in ("session_id", "created_at"):
+        if not isinstance(meta.get(key), str) or not meta[key].strip():
+            errors.append(f"_meta.{key} 必须是非空字符串")
+    if set(data) != {"search_tasks"}:
+        errors.append("data 只能包含 search_tasks")
 
     platforms = catalog.get("platforms")
     if catalog.get("schema_version") != "search-platform-catalog/v1" or not isinstance(platforms, dict):
@@ -68,25 +61,14 @@ def validate(document: dict[str, Any], catalog: dict[str, Any], intent: dict[str
     if not isinstance(tasks, list) or not tasks:
         return errors + ["data.search_tasks 必须是非空数组"]
 
-    task_ids: set[str] = set()
     used_platforms: list[str] = []
     generic_count = 0
-    query_count = 0
-    expected_results = 0
 
     for index, task in enumerate(tasks):
         path = f"search_tasks[{index}]"
         if not isinstance(task, dict):
             errors.append(f"{path} 必须是 object")
             continue
-        task_id = task.get("task_id")
-        if not isinstance(task_id, str) or not task_id.startswith("task-"):
-            errors.append(f"{path}.task_id 格式非法")
-        elif task_id in task_ids:
-            errors.append(f"task_id 重复: {task_id}")
-        else:
-            task_ids.add(task_id)
-
         platform = task.get("platform")
         entry = platforms.get(platform) if isinstance(platform, str) else None
         if not isinstance(entry, dict):
@@ -96,6 +78,8 @@ def validate(document: dict[str, Any], catalog: dict[str, Any], intent: dict[str
             errors.append(f"{path}.platform 不可执行: {platform}")
             supported_params = {}
         else:
+            if platform in used_platforms:
+                errors.append(f"平台任务重复: {platform}")
             used_platforms.append(platform)
             supported_params = entry.get("search_parameters", {})
             if not isinstance(supported_params, dict):
@@ -105,8 +89,8 @@ def validate(document: dict[str, Any], catalog: dict[str, Any], intent: dict[str
 
         if task.get("priority") not in {"P0", "P1", "P2"}:
             errors.append(f"{path}.priority 非法")
-        if not isinstance(task.get("reason"), str) or not task["reason"].strip():
-            errors.append(f"{path}.reason 必须是非空字符串")
+        if set(task) != {"platform", "priority", "searches"}:
+            errors.append(f"{path} 只能包含 platform、priority、searches")
 
         searches = task.get("searches")
         if not isinstance(searches, list) or not searches:
@@ -128,9 +112,7 @@ def validate(document: dict[str, Any], catalog: dict[str, Any], intent: dict[str
             max_results = search.get("max_results")
             if not isinstance(max_results, int) or isinstance(max_results, bool) or not 1 <= max_results <= 100:
                 errors.append(f"{search_path}.max_results 必须在 1-100")
-            else:
-                expected_results += max_results
-            params = search.get("params")
+            params = search.get("params", {})
             if not isinstance(params, dict):
                 errors.append(f"{search_path}.params 必须是 object")
                 continue
@@ -158,19 +140,9 @@ def validate(document: dict[str, Any], catalog: dict[str, Any], intent: dict[str
                     not isinstance(value, list) or not set(required_values).issubset(set(value))
                 ):
                     errors.append(f"{search_path}.params.{name} 必须包含 {required_values}")
-            query_count += 1
 
     if generic_count != 1:
         errors.append(f"search_tasks 必须恰好包含一个 generic 任务，实际 {generic_count} 个")
-    if summary.get("platform_count") != len(set(used_platforms)):
-        errors.append("_summary.platform_count 与平台数不一致")
-    if summary.get("platforms") != list(dict.fromkeys(used_platforms)):
-        errors.append("_summary.platforms 必须按任务顺序列出唯一平台")
-    if summary.get("query_count") != query_count:
-        errors.append("_summary.query_count 与实际搜索词数量不一致")
-    if summary.get("expected_results") != expected_results:
-        errors.append("_summary.expected_results 与 max_results 总和不一致")
-
     if intent is not None and intent.get("data", {}).get("status") != "ready":
         errors.append("不能为非 ready 的 intent 生成搜索计划")
     return errors

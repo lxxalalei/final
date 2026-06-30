@@ -8,7 +8,7 @@
 搜索入口：
   https://open.163.com/newview/search/{关键词}
 
-输出格式遵循 resource-platforms/references/schemas/platform-search-contract.md：
+输出由 adapter 归一化，接口见 resource-platforms/references/search-interface.md：
   resource_id / title / source_url / platform 为必填字段。
 
 用法:

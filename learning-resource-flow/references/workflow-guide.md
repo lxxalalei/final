@@ -14,10 +14,10 @@ Stage 2 和 stage 3 正常情况下连续执行，不要求额外确认。
 
 Intent 返回 `needs_clarification` 时：
 
-1. 从 Intent `_summary.clarification_question` 读取问题；不要由 Flow 重新组织一组问题。
+1. 从 Intent `_summary.question` 读取问题，并核对它与 `data.clarification.question` 一致；不要由 Flow 重新组织一组问题。
 2. 先把问题作为 assistant evidence 写入 `request.json`，再把 stage 1 标记为 `waiting_user` 并向用户展示。
 3. 下一轮收到回答后，把回答原文作为 user evidence 追加到 `request.json`。
-4. 只有回答直接确认了事实时才同步写入 `user_confirmed_facts`；不要让 Flow 提前完成 Intent 的语义归纳。
+4. 不另行概括确认事实，避免 Flow 提前完成 Intent 的语义归纳。
 5. 每次写入后运行 `python3 learning-resource-flow/scripts/validate_request.py {session_dir}/request.json`。
 6. 重跑 stage 1；不要直接修改 `stage1_intent.json`。
 7. 最多两轮。达到上限后仍无法确定核心主题或消除硬约束冲突，将 stage 1 标记为 `failed` 并结束本次规划。
@@ -29,10 +29,7 @@ Intent 返回 `needs_clarification` 时：
   "current_stage": 1,
   "stages": {
     "stage1": {
-      "status": "waiting_user",
-      "clarification_round": 1,
-      "question": "你更需要可打印的练习题，还是视频讲解？",
-      "asked_at": "ISO 8601"
+      "status": "waiting_user"
     }
   }
 }
@@ -75,7 +72,7 @@ Stage 5 使用：
 1. 将该阶段标记为 `in_progress`。
 2. 将所有下游阶段重置为 `pending`。
 3. 新输出使用原文件名覆盖前先保留必要错误记录。
-4. 成功后写回 `_summary` 和完成时间。
+4. 成功后标记 `completed`；业务结果只保存在阶段文件。
 
 ## 用户取消
 

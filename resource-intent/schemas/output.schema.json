@@ -5,25 +5,27 @@
   "type": "object",
   "required": ["_meta", "_summary", "data"],
   "$defs": {
-    "status": {"enum": ["explicit", "inferred", "defaulted", "unknown"]},
     "slotString": {
       "type": "object",
-      "required": ["value", "status", "confidence", "evidence"],
+      "required": ["value", "status", "evidence"],
       "properties": {
-        "value": {"type": ["string", "null"]},
-        "status": {"$ref": "#/$defs/status"},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "value": {"type": "string", "minLength": 1},
+        "status": {"enum": ["explicit", "inferred", "defaulted"]},
         "evidence": {"type": "array", "items": {"type": "string"}}
       },
       "additionalProperties": false
     },
     "slotArray": {
       "type": "object",
-      "required": ["value", "status", "confidence", "evidence"],
+      "required": ["value", "status", "evidence"],
       "properties": {
-        "value": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "status": {"$ref": "#/$defs/status"},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "value": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "status": {"enum": ["explicit", "inferred", "defaulted"]},
         "evidence": {"type": "array", "items": {"type": "string"}}
       },
       "additionalProperties": false
@@ -32,40 +34,41 @@
   "properties": {
     "_meta": {
       "type": "object",
-      "required": ["stage", "session_id", "skill", "created_at", "input_from", "schema_version"],
+      "required": ["schema_version", "session_id", "created_at"],
       "properties": {
-        "stage": {"const": 1},
+        "schema_version": {"const": "intent-spec/v1"},
         "session_id": {"type": "string", "minLength": 1},
-        "skill": {"const": "resource-intent"},
-        "created_at": {"type": "string", "minLength": 1},
-        "input_from": {"const": "request.json"},
-        "schema_version": {"const": "intent-spec/v1"}
+        "created_at": {"type": "string", "minLength": 1}
       },
       "additionalProperties": false
     },
     "_summary": {
       "type": "object",
-      "required": ["status", "core_topic", "target_age", "clarification_required", "clarification_question", "assumptions"],
+      "required": ["status"],
       "properties": {
         "status": {"enum": ["ready", "needs_clarification"]},
-        "core_topic": {"type": ["string", "null"]},
-        "target_age": {"type": ["string", "null"]},
-        "clarification_required": {"type": "boolean"},
-        "clarification_question": {"type": ["string", "null"]},
-        "assumptions": {"type": "array", "items": {"type": "string"}}
+        "question": {"type": "string", "minLength": 1}
       },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "needs_clarification"}}},
+          "then": {"required": ["question"]}
+        },
+        {
+          "if": {"properties": {"status": {"const": "ready"}}},
+          "then": {"not": {"required": ["question"]}}
+        }
+      ],
       "additionalProperties": false
     },
     "data": {
       "type": "object",
-      "required": ["schema_version", "status", "raw_request", "slots", "constraints", "search_concepts", "ambiguities", "clarification", "assumptions"],
+      "required": ["status", "raw_request", "slots", "constraints", "search_concepts"],
       "properties": {
-        "schema_version": {"const": "intent-spec/v1"},
         "status": {"enum": ["ready", "needs_clarification"]},
         "raw_request": {"type": "string", "minLength": 1},
         "slots": {
           "type": "object",
-          "required": ["core_topic", "learning_domain", "target_age", "grade_level", "learning_goal", "difficulty", "resource_types", "format_preferences", "file_formats", "source_preferences", "use_scenario", "version", "language", "search_mode"],
           "properties": {
             "core_topic": {"$ref": "#/$defs/slotString"},
             "learning_domain": {"$ref": "#/$defs/slotString"},
@@ -76,7 +79,6 @@
             "resource_types": {"$ref": "#/$defs/slotArray"},
             "format_preferences": {"$ref": "#/$defs/slotArray"},
             "file_formats": {"$ref": "#/$defs/slotArray"},
-            "source_preferences": {"$ref": "#/$defs/slotArray"},
             "use_scenario": {"$ref": "#/$defs/slotString"},
             "version": {"$ref": "#/$defs/slotString"},
             "language": {"$ref": "#/$defs/slotString"},
@@ -86,50 +88,50 @@
         },
         "constraints": {
           "type": "object",
-          "required": ["must", "prefer", "exclude"],
           "properties": {
-            "must": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-            "prefer": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-            "exclude": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+            "must": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+            "prefer": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+            "exclude": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
           },
           "additionalProperties": false
         },
         "search_concepts": {
           "type": "object",
-          "required": ["canonical_terms", "synonyms", "related_terms"],
           "properties": {
-            "canonical_terms": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-            "synonyms": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-            "related_terms": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+            "canonical_terms": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+            "synonyms": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+            "related_terms": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
           },
           "additionalProperties": false
-        },
-        "ambiguities": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["field", "alternatives", "impact"],
-            "properties": {
-              "field": {"type": "string"},
-              "alternatives": {"type": "array", "items": {"type": "string"}, "minItems": 2},
-              "impact": {"type": "string"}
-            },
-            "additionalProperties": false
-          }
         },
         "clarification": {
           "type": "object",
-          "required": ["required", "question", "reason", "missing_information"],
+          "required": ["question", "reason"],
           "properties": {
-            "required": {"type": "boolean"},
-            "question": {"type": ["string", "null"]},
-            "reason": {"type": ["string", "null"]},
-            "missing_information": {"type": "array", "items": {"type": "string"}}
+            "question": {"type": "string", "minLength": 1},
+            "reason": {"type": "string", "minLength": 1}
           },
           "additionalProperties": false
         },
-        "assumptions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+        "assumptions": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
       },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "ready"}}},
+          "then": {
+            "properties": {"slots": {"required": ["core_topic"]}},
+            "not": {"required": ["clarification"]}
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "needs_clarification"}}},
+          "then": {"required": ["clarification"]}
+        }
+      ],
       "additionalProperties": false
     }
   },

@@ -1,0 +1,17 @@
+{
+  "schema_version": "platform-search-registry/v1",
+  "max_concurrency": 4,
+  "platforms": {
+    "generic": {"status": "available", "auth": "none", "entry": "scripts/generic/adapter.py", "timeout_seconds": 30},
+    "bilibili": {"status": "available", "auth": "optional", "entry": "scripts/bilibili/adapter.py", "timeout_seconds": 60},
+    "ximalaya": {"status": "available", "auth": "none", "entry": "scripts/ximalaya/adapter.py", "timeout_seconds": 45},
+    "smartedu": {"status": "available", "auth": "optional", "entry": "scripts/smartedu/adapter.py", "timeout_seconds": 90},
+    "zhihu": {"status": "available", "auth": "optional", "entry": "scripts/zhihu/adapter.py", "timeout_seconds": 45},
+    "douyin": {"status": "available", "auth": "runtime", "entry": "scripts/douyin/adapter.py", "timeout_seconds": 90},
+    "weibo": {"status": "available", "auth": "required", "entry": "scripts/weibo/adapter.py", "timeout_seconds": 60},
+    "open163": {"status": "available", "auth": "none", "entry": "scripts/open163/adapter.py", "timeout_seconds": 45},
+    "baiduwenku": {"status": "planned", "auth": "unknown", "entry": null},
+    "xiaohongshu": {"status": "planned", "auth": "unknown", "entry": null},
+    "cctv": {"status": "planned", "auth": "unknown", "entry": null}
+  }
+}

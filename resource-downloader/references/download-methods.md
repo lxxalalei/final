@@ -3,7 +3,7 @@
 > **定位说明**：本文档是下载调度器的**通用兜底方案 + 平台下载方法参考**。
 > - 当资源没有对应平台 Skill 时，使用本文档中的通用方法进行下载。
 > - 有专属平台 Skill 的，优先走平台 Skill 通道，本文档也收录了各平台的下载方法说明供参考。
-> - 各平台下载方法的权威定义在各 `platforms/<平台>/SKILL.md` 中，本文档与之保持一致。
+> - Platform 已收缩为搜索层；下载入口后续由 Downloader 自己维护。
 
 本文档详细介绍各种资源的下载方法、工具使用技巧和最佳实践。
 
@@ -237,7 +237,7 @@ wget --mirror <网站链接>
 ## 📺 HLS/m3u8 流媒体下载
 
 > **适用平台**：smartedu（精品课、同步课堂等课程视频）、cctv、open163 等使用 HLS 协议的平台。
-> **本系统权威实现**：`platforms/smartedu/scripts/smartedu_download.py`（`download_m3u8_video()` 函数）。
+> **本系统权威实现**：`resource-platforms/scripts/smartedu/smartedu_download.py`。
 
 ### HLS 协议简介
 
@@ -285,15 +285,15 @@ ffmpeg -protocol_whitelist file,http,https,tcp,tls,crypto \
 
 ```bash
 # smartedu 全资源下载器（内部自动调用 m3u8 下载）
-python3 platforms/smartedu/scripts/smartedu_download.py download \
+python3 resource-platforms/scripts/smartedu/smartedu_download.py download \
   "https://basic.smartedu.cn/qualityCourse?courseId=xxx"
 
 # 指定只下载视频（m3u8），并设置并发数
-python3 platforms/smartedu/scripts/smartedu_download.py download "https://..." \
+python3 resource-platforms/scripts/smartedu/smartedu_download.py download "https://..." \
   --formats m3u8 --video-concurrency 8
 
 # 指定输出格式为 mp4（需 ffmpeg）
-python3 platforms/smartedu/scripts/smartedu_download.py download "https://..." \
+python3 resource-platforms/scripts/smartedu/smartedu_download.py download "https://..." \
   --formats m3u8 --video-output mp4
 ```
 
@@ -400,7 +400,7 @@ ffmpeg -i "https://example.com/video.m3u8" -c copy output.mp4
 ## 🚀 f2 引擎下载（抖音专用）
 
 > **适用平台**：douyin（抖音）。
-> **本系统权威实现**：`platforms/douyin/scripts/douyin_dl.py`（`F2Engine` 类）。
+> **本系统权威实现**：`resource-platforms/scripts/douyin/douyin_dl.py`（`F2Engine` 类）。
 > **依赖**：`pip install f2 gmssl httpx playwright playwright-stealth`
 
 ### f2 引擎简介
@@ -418,20 +418,20 @@ ffmpeg -i "https://example.com/video.m3u8" -c copy output.mp4
 
 ```bash
 # 单个视频下载（无水印）
-python3 platforms/douyin/scripts/douyin_dl.py download <视频URL或ID> -o ./downloads/
+python3 resource-platforms/scripts/douyin/douyin_dl.py download <视频URL或ID> -o ./downloads/
 
 # 批量下载
-python3 platforms/douyin/scripts/douyin_dl.py batch list.json -o ./downloads/
+python3 resource-platforms/scripts/douyin/douyin_dl.py batch list.json -o ./downloads/
 
 # 用户全部视频
-python3 platforms/douyin/scripts/douyin_dl.py user <sec_uid> -o ./downloads/
-python3 platforms/douyin/scripts/douyin_dl.py user <sec_uid> -o ./downloads/ --list-only
+python3 resource-platforms/scripts/douyin/douyin_dl.py user <sec_uid> -o ./downloads/
+python3 resource-platforms/scripts/douyin/douyin_dl.py user <sec_uid> -o ./downloads/ --list-only
 
 # 搜索（输出标准 candidate JSON）
-python3 platforms/douyin/scripts/douyin_dl.py search "小学数学" --max 20 -o candidates.json
+python3 resource-platforms/scripts/douyin/douyin_dl.py search "小学数学" --max 20 -o candidates.json
 
 # 签名失效时降级到 CDP 浏览器模式
-python3 platforms/douyin/scripts/douyin_dl.py --cdp http://127.0.0.1:9222 download <URL>
+python3 resource-platforms/scripts/douyin/douyin_dl.py --cdp http://127.0.0.1:9222 download <URL>
 ```
 
 ### 参数说明
@@ -546,7 +546,7 @@ python3 platforms/douyin/scripts/douyin_dl.py --cdp http://127.0.0.1:9222 downlo
 
 ```bash
 # 手动指定 CDP
-python3 platforms/douyin/scripts/douyin_dl.py --cdp http://127.0.0.1:9222 download <URL>
+python3 resource-platforms/scripts/douyin/douyin_dl.py --cdp http://127.0.0.1:9222 download <URL>
 
 # 自动降级（无需手动指定）
 # 脚本检测到 SignatureExpiredError 后自动尝试 detect_cdp()
@@ -619,7 +619,7 @@ gallery-dl <图集链接>
 ## 🗺️ 平台-下载方法映射表
 
 > 本表汇总各平台支持的下载方式、工具和命令。有专属平台 Skill 的优先走平台通道，其余走通用兜底。
-> 平台执行能力和入口见 `../../resource-platforms/config/platform-registry.json`。
+> 平台专属下载能力后续在 Downloader 内维护，本文件当前只描述通用方法。
 
 ### 已接入平台（有专属 Skill）
 
@@ -767,147 +767,20 @@ yt-dlp --proxy http://proxy:port <链接>
 
 ---
 
-## 🔍 故障排查指南
+## 🔍 故障排查
 
-> 本章节按下载方法分类，提供常见错误的排查方案。
-> 下载错误码见 `error-codes.md`。
-
-### yt-dlp 通用视频下载
-
-| 问题 | 错误码 | 原因 | 解决方案 |
-|------|--------|------|---------|
-| HTTP Error 403 | `ANTI_CRAWL_BLOCKED` | 被反爬拦截或需登录 | 等待后重试，或传入 `--cookies` |
-| HTTP Error 404 | `CONTENT_NOT_FOUND` | 视频已删除 | 放弃，找替代资源 |
-| 下载速度极慢 | `DOWNLOAD_SPEED_TOO_SLOW` | 服务器限速或网络问题 | 降低质量（`-f 'best[height<=720]'`），换时间重试 |
-| ERROR: Unsupported URL | `PARSE_FORMAT_NOT_SUPPORTED` | yt-dlp 不支持该站 | 改用 wget/curl 或 ffmpeg |
-| 视频无法下载（会员/付费） | `CONTENT_PREMIUM_ONLY` | 会员专享内容 | 降级处理，找替代资源 |
-| 合并失败（ffmpeg not found） | `SYSTEM_TOOL_NOT_FOUND` | 未安装 ffmpeg | 安装 ffmpeg 或 `pip install imageio-ffmpeg` |
-
-### m3u8 / HLS 流媒体下载
-
-| 问题 | 错误码 | 原因 | 解决方案 |
-|------|--------|------|---------|
-| 获取 m3u8 失败：HTTP 403 | `ANTI_CRAWL_BLOCKED` | CDN WAF 拦截 | 详见下方 smartedu 专项排查 |
-| 播放列表中无分段 | `PARSE_EMPTY_CONTENT` | m3u8 解析失败或内容为空 | 检查 m3u8 URL 是否有效；可能是 master playlist，需提取子列表 |
-| 获取解密密钥失败 | `AUTH_PERMISSION_DENIED` | 密钥服务器拒绝 | smartedu：确保用**裸 GET**（不加 auth header） |
-| TS 分片下载返回 400 | `ANTI_CRAWL_RATE_LIMITED` | 单一 CDN 节点限流 | **轮换 r1/r2/r3 主机**，降低并发数（`--video-concurrency 3`） |
-| 部分分片下载失败 | `DOWNLOAD_PARTIAL` | 网络波动或超时 | 脚本自动重试 3 轮；仍失败则检查网络 |
-| 合并后视频花屏/无法播放 | `DOWNLOAD_FILE_CORRUPTED` | 解密失败或分片损坏 | 检查 IV 是否正确；确认 PyCryptodome/cryptography 已安装 |
-| 视频时长不对/跳跃 | `DOWNLOAD_FILE_CORRUPTED` | 分片顺序错误 | 确保按序号（00001.ts...）顺序合并 |
-
-#### smartedu m3u8 专项排查
-
-**问题：获取详情 JSON 返回 403**
-- 原因：`s-file-*` CDN 不能加业务 header（`Content-Type`/`Origin`/`Referer`）
-- 解决：用**裸 GET**（`_auth_http.py` 的 `bare_request_json()`），不加任何业务 header
-
-**问题：获取解密密钥返回 403**
-- 原因：`ndvideo-key.ykt.eduyun.cn` 接口不能加 `Authorization` header
-- 解决：同样用裸 GET；密钥交换流程见上方「smartedu 自定义加密」章节
-
-**问题：下载 PDF 返回 401/403**
-- 原因：私有 CDN 需要双重认证
-- 解决：确保同时携带 `Authorization: Bearer <token>` 和 `accessToken: <token>` 两个 header；检查 `SMARTEDU_ACCESS_TOKEN` 是否已过期
-
-**问题：TS 分片批量返回 400 InvalidArgument**
-- 原因：单一 `r*` CDN 节点高并发限流
-- 解决：降低 `--video-concurrency`（默认 5，可降至 2-3），脚本内部已实现 r1/r2/r3 轮换
-
-### f2 引擎 / 抖音下载
-
-| 问题 | 错误码 | 原因 | 解决方案 |
-|------|--------|------|---------|
-| API 返回空响应 | `SignatureExpiredError` | ABogus 签名过期 | 脚本自动降级到 CDP 模式；或手动指定 `--cdp` |
-| 风控拦截（验证码） | `ANTI_CRAWL_CAPTCHA` | 触发风控验证 | 暂停下载（等 30 分钟+）；降低批量数（`RATE_MAX_BATCH=50`） |
-| 连续下载失败 | `RiskControlError` | 连续 3 次失败触发熔断 | `RateLimiter.should_circuit_break` 自动停止；等待后重试 |
-| Token 生成失败 | `SYSTEM_CONFIG_ERROR` | f2 库未安装或版本不对 | `pip install f2 gmssl`；确认网络可访问抖音 |
-| 无水印 URL 为空 | `PARSE_EMPTY_CONTENT` | 该视频不支持无水印下载 | 使用 `play_url`（有水印地址）降级下载 |
-| 下载速度极慢 | `DOWNLOAD_SPEED_TOO_SLOW` | 防风控间隔（6-14 秒/个） | 这是正常行为，批量下载较慢 |
-
-#### 抖音 f2 专项排查
-
-**问题：`from f2.apps.douyin.utils import TokenManager` 导入失败**
-- 解决：`pip install f2`（需 Python 3.8+）
-
-**问题：`gen_real_msToken()` 失败**
-- 原因：抖音接口变化或网络问题
-- 解决：脚本自动降级到 `gen_false_msToken()`（伪造版），大部分场景仍可用
-
-**问题：CDP fallback 启动独立浏览器也失败**
-- 解决：确保安装 `playwright` 和 `playwright-stealth`，运行 `playwright install chromium`
-
-### bilibili CDP 下载
-
-| 问题 | 错误码 | 原因 | 解决方案 |
-|------|--------|------|---------|
-| 浏览器启动失败 | `SYSTEM_TOOL_NOT_FOUND` | 未安装 Playwright | `pip install playwright && playwright install chromium` |
-| 合并失败 | `DOWNLOAD_FILE_CORRUPTED` | ffmpeg 未安装 | 安装 ffmpeg 或 `pip install imageio-ffmpeg` |
-| 搜索返回空（WBI 签名） | `ANTI_CRAWL_BLOCKED` | TLS 指纹检测 | 必须用 CDP 模式，不能用 headless 直连 |
-| 视频需要大会员 | `AUTH_MEMBER_ONLY` | 会员专享视频 | 传入会员 cookie，或降级处理 |
-
-### zhihu / weibo 图文下载
-
-| 问题 | 错误码 | 原因 | 解决方案 |
-|------|--------|------|---------|
-| 搜索 API 返回 401 | `AUTH_LOGIN_REQUIRED` | 知乎需要 z_c0 认证 | 配置 `ZHIHU_COOKIE` 环境变量 |
-| 搜索 API 返回 403 | `ANTI_CRAWL_BLOCKED` | 知乎反爬 | 脚本自动降级：API → 页面抓取 → 搜索引擎兜底 |
-| 微博搜索返回空 | `AUTH_LOGIN_REQUIRED` | 微博需要 SUB cookie | 配置 Cookie（`--cookie weibo_cookies.txt`） |
-| 专栏文章内容缺失 | `PARSE_INCOMPLETE` | 部分内容需要登录 | 传入 `--cookie` 获取完整内容 |
-
-### wget / curl 通用下载
-
-| 问题 | 错误码 | 原因 | 解决方案 |
-|------|--------|------|---------|
-| 404 Not Found | `CONTENT_NOT_FOUND` | 链接失效 | 重新获取有效链接 |
-| Connection refused | `NETWORK_CONNECTION_FAILED` | 服务器拒绝 | 稍后重试，检查网络 |
-| 下载内容不对 | `PARSE_INCOMPLETE` | 重定向未跟随 | wget 默认跟随；curl 加 `-L` |
-| SSL 证书错误 | `NETWORK_SSL_ERROR` | 证书问题或代理干扰 | 检查代理；临时用 `--no-check-certificate`（wget） |
-
-### ffmpeg 合并与转码
-
-| 问题 | 原因 | 解决方案 |
-|------|------|---------|
-| `ffmpeg: command not found` | 未安装 | Windows: winget install ffmpeg；macOS: brew install ffmpeg |
-| 合并后音画不同步 | 分片顺序或时间戳问题 | 确保 TS 分片按序号顺序合并 |
-| `Invalid data found when processing input` | TS 分片未正确解密 | 检查 AES key 和 IV 是否正确；确认解密库可用 |
-| 转封装 mp4 失败 | TS 格式不兼容 mp4 容器 | 用 `-c:v copy -c:a aac` 重新编码音频 |
-
----
-
-## 📋 检查清单
-
-下载前：
-- [ ] 确认链接有效
-- [ ] 确认是公开可访问的
-- [ ] 选择合适的质量/格式
-- [ ] 想好保存到哪里
-- [ ] 检查所需工具是否安装（yt-dlp/ffmpeg/f2 等）
-
-下载中：
-- [ ] 观察是否有 403/风控错误
-- [ ] 长时间下载注意磁盘空间
-- [ ] m3u8 视频检查分片下载进度
-
-下载后：
-- [ ] 检查文件是否完整（大小、可播放性）
-- [ ] m3u8 视频验证合并后是否花屏
-- [ ] 重命名为有意义的名字
-- [ ] 整理到正确的目录
-- [ ] 更新资料库索引
-
----
+具体错误现象、排查步骤和降级建议统一见 `troubleshooting.md`；错误码使用 `error-codes.md`。本文件不再重复维护故障表。
 
 ## 🔗 相关文档
 
 | 文档 | 说明 |
 |------|------|
-| `../../resource-platforms/references/schemas/platform-download-contract.md` | 平台下载接口契约（downloader ↔ platform） |
-| `error-codes.md` | 下载错误码体系 |
-| `../../resource-platforms/config/platform-registry.json` | 平台搜索/下载能力与执行入口 |
-| `../../platforms/smartedu/SKILL.md` | smartedu 平台 Skill（m3u8 下载权威实现） |
-| `../../platforms/douyin/SKILL.md` | douyin 平台 Skill（f2 引擎权威实现） |
-| `../../platforms/bilibili/SKILL.md` | bilibili 平台 Skill（CDP + ffmpeg 合并） |
-| `../../platforms/zhihu/SKILL.md` | zhihu 平台 Skill（API → Markdown） |
-| `../../platforms/weibo/SKILL.md` | weibo 平台 Skill（ajax → 图文下载） |
+| `platform-download-contract.md` | 未来的平台下载接口 |
+| `error-codes.md` | 下载错误码规范 |
+| `../../resource-platforms/references/platforms/smartedu.md` | smartedu 平台能力与限制 |
+| `../../resource-platforms/references/platforms/douyin.md` | douyin 平台能力与限制 |
+| `../../resource-platforms/references/platforms/bilibili.md` | bilibili 平台能力与限制 |
+| `../../resource-platforms/references/platforms/zhihu.md` | zhihu 平台能力与限制 |
+| `../../resource-platforms/references/platforms/weibo.md` | weibo 平台能力与限制 |
 
 ---

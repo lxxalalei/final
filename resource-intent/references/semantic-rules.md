@@ -12,7 +12,7 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 
 用户已经说清资源对象：
 
-- “找三年级数学练习题”
+- “四年级数学课程”
 - “想要恐龙科普动画”
 - “找适合睡前听的英语故事”
 
@@ -65,11 +65,12 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 | `resource_types` | 视频类、音频类、文档类、练习类、图文类、图片类等资料大类 | 用户明确类型，或由明确形态/场景可靠归纳 |
 | `format_preferences` | 动画、纪录片、公开课、试卷、练习册、绘本、课件等具体内容形态 | 用户明确形态，或由使用场景可靠推断 |
 | `file_formats` | PDF、PPTX、DOCX、EPUB、MP3、MP4 等实际文件格式 | 用户明确文件后缀或格式名称 |
-| `source_preferences` | 官方、专业机构、用户内容、不限 | “官方教材”“老师推荐”“经验分享” |
 | `use_scenario` | 自主学习、亲子共读、路上听、打印练习、课堂辅助等 | 时间、地点、使用者和动作 |
 | `version` | 教材、课程或软件版本 | 人教版、北师大版、上册等 |
 | `language` | 资源呈现语言 | 中文讲解、全英文、双语等 |
 | `search_mode` | standard / exhaustive | “推荐几个”或“尽量全面” |
+
+来源要求直接按强度写入 `constraints.must` 或 `constraints.prefer`，不再维护重复的 `source_preferences` 槽位。
 
 ## 4. 从口语到学习目标
 
@@ -91,7 +92,7 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 
 用户直接表达或确认：
 
-- “三年级” → grade_level explicit。
+- “四年级” → grade_level explicit。
 - “不要视频” → constraints.exclude explicit。
 - “最好官方” → constraints.prefer explicit。
 
@@ -99,7 +100,7 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 
 由语义或稳定关系推出：
 
-- 三年级 → 约 8-9 岁，但 target_age 必须标 inferred。
+- 四年级 → 约 9-10 岁，但 target_age 必须标 inferred。
 - 路上听 → 音频偏好 inferred。
 - 练习题 → learning_goal=练习 inferred。
 - 动画 → resource_types 包含视频类 inferred，同时 format_preferences=动画 explicit。
@@ -114,25 +115,15 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 
 资料类型、具体形态和文件格式不得仅因主题而 defaulted。用户说“形式都行”是明确授权，`resource_types=["不限"]` 应标记 explicit；多形态覆盖由 Search 规划。
 
-### unknown
+### 未知值
 
-没有足够依据：
+没有足够依据时省略槽位：
 
-- 主题明确但没年龄 → 年龄可以 unknown。
-- 用户未提教材版本 → version unknown。
-- “英语启蒙”但没说讲解语言 → language unknown 或低风险 defaulted，不得标 explicit。
+- 主题明确但没年龄 → 省略 target_age。
+- 用户未提教材版本 → 省略 version。
+- “英语启蒙”但没说讲解语言 → 省略 language，或采用低风险 defaulted；不得标 explicit。
 
-## 6. 置信度使用
-
-- 明确事实通常 0.95-1.0。
-- 年级到年龄等稳定推断通常 0.8-0.9。
-- 问题描述到学习目标通常 0.7-0.9，取决于歧义。
-- 低于 0.7 的推断应考虑保留 unknown 或写入 ambiguity。
-- defaulted 通常约 0.5，表示工作策略而非事实可信度。
-
-置信度不能用来掩盖缺失证据。explicit 必须有 evidence。
-
-## 7. must、prefer、exclude
+## 6. must、prefer、exclude
 
 ### must
 
@@ -163,7 +154,7 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 
 否定范围必须精确。“不要太难”通常是难度偏好，不等于排除所有进阶内容；“不想只看视频”也不等于完全排除视频。
 
-## 8. 冲突处理
+## 7. 冲突处理
 
 - 年龄与年级冲突：两者都保留 explicit，记录 ambiguity，通常需要澄清。
 - “只要免费，付费也可以看看”：must 语义冲突，需要澄清真实底线。
@@ -171,7 +162,7 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 - “官方优先，也接受老师经验”：不冲突，官方是 prefer，用户内容仍可作为补充。
 - 历史上下文与当前请求冲突：当前请求优先，但用户已确认事实需要明确更新后才能覆盖。
 
-## 9. 动态默认策略
+## 8. 动态默认策略
 
 默认不是固定模板，应考虑主题和场景：
 
@@ -182,13 +173,13 @@ Intent 不是分类器，也不是搜索器。它把家长或学习者的口语�
 
 每个 defaulted 槽位都要在 assumptions 中解释。
 
-## 10. Search 概念边界
+## 9. Search 概念边界
 
 Intent 输出概念材料，不输出查询任务：
 
 ```json
 {
-  "canonical_terms": ["小学三年级", "数学", "应用题"],
+  "canonical_terms": ["小学四年级", "数学", "课程"],
   "synonyms": ["解决问题", "文字题"],
   "related_terms": ["审题", "解题思路", "专项练习"]
 }
@@ -198,14 +189,14 @@ canonical terms 不得丢失用户核心语义；synonyms 是等价或近似表�
 
 不得在这里选择平台、拼接完整搜索句或写 `site:`。
 
-## 11. 输出前语义自检
+## 10. 输出前语义自检
 
 1. core_topic 是否描述了用户真正想学或解决的对象？
 2. 是否把问题描述误当成诊断结论？
 3. explicit 是否都有原话证据？
 4. inferred 是否与 explicit 分开？
 5. defaulted 是否低风险且写入 assumptions？
-6. unknown 是否被错误填成看似完整的值？
+6. 没有依据的槽位是否被错误填成看似完整的值？
 7. must/prefer/exclude 是否保持了语气强度？
 8. 是否还有会让 Search 走向完全不同路线的歧义？
 9. 是否错误生成了平台或查询任务？

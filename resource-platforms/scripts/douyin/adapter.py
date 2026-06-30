@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
-"""Douyin（抖音）平台适配器 — 实现 PlatformSkill 接口。
-
-搜索：调用 douyin_dl.py search 子命令（T6 实现）
-下载：调用 douyin_dl.py download 子命令
-"""
+"""Douyin search adapter. The legacy mixed CLI is invoked only with search."""
 
 from __future__ import annotations
 
-from shared.platform_base import CLIBasedPlatformSkill, _platforms_base_dir
+from shared.search_adapter import CLISearchAdapter, SCRIPTS_DIR
 
 
-class DouyinSkill(CLIBasedPlatformSkill):
+class DouyinSearchAdapter(CLISearchAdapter):
     """抖音平台 Skill。"""
 
     platform_name = "douyin"
 
-    def __init__(self) -> None:
-        super().__init__()
-        # douyin 的搜索在 douyin_dl.py 中（非 *_search.py 约定），显式指定
-        base = _platforms_base_dir()
-        self._search_script = base / "douyin" / "douyin_dl.py"
+    search_script = SCRIPTS_DIR / "douyin" / "douyin_dl.py"
+
+
+ADAPTER = DouyinSearchAdapter()

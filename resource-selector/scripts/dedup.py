@@ -1,4 +1,4 @@
-"""shared.dedup — 跨平台内容级去重引擎。
+"""Selector-owned cross-platform content deduplication engine.
 
 提供三种互补的去重策略，按优先级自动组合使用：
 
@@ -19,7 +19,7 @@
 
 用法示例::
 
-    from shared.dedup import DedupEngine, DedupConfig
+    from dedup import DedupEngine, DedupConfig
 
     engine = DedupEngine()                        # 使用默认配置
     # 或自定义
@@ -956,7 +956,7 @@ class DedupEngine:
     def _get_content_hash(self, resource: dict[str, Any]) -> str | None:
         """从资源元数据获取内容 hash。
 
-        优先使用 checksum 字段；如果没有，尝试计算 file_path 的 hash。
+        优先使用 checksum 字段；如果没有，尝试计算 files 中首个文件的 hash。
         """
         # 优先使用已有的 checksum
         checksum = resource.get("checksum", "")
@@ -971,8 +971,10 @@ class DedupEngine:
                 return checksum
             return checksum
 
-        # 尝试从 file_path 计算
-        file_path = resource.get("file_path") or resource.get("library_path")
+        # 新契约使用 files/library_paths 数组；保留旧单路径索引兼容。
+        files = resource.get("files") or resource.get("library_paths") or []
+        file_path = files[0] if isinstance(files, list) and files else None
+        file_path = file_path or resource.get("file_path") or resource.get("library_path")
         if file_path:
             return compute_file_hash(file_path, self.config.hash_algorithm)
 
@@ -983,8 +985,11 @@ class DedupEngine:
     ) -> int:
         """根据策略选择 canonical 资源，返回组内索引。"""
         if self.strategy == DedupStrategy.KEEP_BEST_QUALITY:
-            # 按 quality_level 降序，相同时按 platform_quality_score 降序
+            # 新契约直接使用 Selector 的 quality_score；旧索引字段仅作兼容回退。
             def _quality_key(r: dict[str, Any]) -> tuple[int, int]:
+                score = r.get("quality_score")
+                if isinstance(score, (int, float)) and not isinstance(score, bool):
+                    return (int(score), 0)
                 ql = r.get("quality_level", "C")
                 rank = _QUALITY_RANK.get(ql, 0)
                 pqs = r.get("platform_quality_score", 0) or 0
@@ -999,10 +1004,11 @@ class DedupEngine:
             return best_idx
 
         elif self.strategy == DedupStrategy.KEEP_EARLIEST:
-            # 按 fetch_time / archive_time 升序
+            # 调用者可把阶段文件时间作为 created_at 传入。
             def _time_key(r: dict[str, Any]) -> str:
                 return (
-                    r.get("fetch_time")
+                    r.get("created_at")
+                    or r.get("fetch_time")
                     or r.get("archive_time")
                     or ""
                 )
@@ -1016,10 +1022,11 @@ class DedupEngine:
             return best_idx
 
         elif self.strategy == DedupStrategy.KEEP_LATEST:
-            # 按 fetch_time / archive_time 降序
+            # 调用者可把阶段文件时间作为 created_at 传入。
             def _time_key(r: dict[str, Any]) -> str:
                 return (
-                    r.get("fetch_time")
+                    r.get("created_at")
+                    or r.get("fetch_time")
                     or r.get("archive_time")
                     or ""
                 )

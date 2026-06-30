@@ -7,19 +7,18 @@
   "properties": {
     "_meta": {
       "type": "object",
-      "required": ["session_id", "created_at", "skill"],
+      "required": ["schema_version", "session_id", "created_at"],
       "properties": {
+        "schema_version": {"const": "request/v1"},
         "session_id": {"type": "string", "minLength": 1},
-        "created_at": {"type": "string", "minLength": 1},
-        "skill": {"const": "learning-resource-flow"}
+        "created_at": {"type": "string", "minLength": 1}
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "data": {
       "type": "object",
-      "required": ["schema_version", "raw_request", "conversation_evidence"],
+      "required": ["raw_request", "conversation_evidence"],
       "properties": {
-        "schema_version": {"const": "request/v1"},
         "raw_request": {"type": "string", "minLength": 1},
         "conversation_evidence": {
           "type": "array",
@@ -32,11 +31,6 @@
             },
             "additionalProperties": false
           }
-        },
-        "user_confirmed_facts": {
-          "type": "array",
-          "items": {"type": "string", "minLength": 1},
-          "default": []
         }
       },
       "additionalProperties": false

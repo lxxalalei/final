@@ -1,4 +1,4 @@
-"""shared.wbi_sign — B站 WBI 签名工具。
+"""Bilibili WBI signing helper.
 
 实现 B站 Web 接口的 WBI 签名算法，用于搜索 API 鉴权。
 参考：https://github.com/SocialSisterYi/bilibili-API-collect

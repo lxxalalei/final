@@ -9,7 +9,7 @@
   - album（专辑）→ 资源类型「音频」，source_url 指向专辑页
   - track（声音）→ 资源类型「音频」，source_url 指向单条声音页
 
-输出格式遵循 resource-platforms/references/schemas/platform-search-contract.md：
+输出由 adapter 归一化，接口见 resource-platforms/references/search-interface.md：
   resource_id / title / source_url / platform 为必填字段。
 
 用法:

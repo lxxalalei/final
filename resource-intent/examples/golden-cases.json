@@ -2,15 +2,15 @@
   "schema_version": "intent-golden/v1",
   "cases": [
     {
-      "id": "explicit-grade-topic-format",
-      "request": "给三年级孩子找可打印的数学练习题，最好带答案",
+      "id": "explicit-grade-math-course",
+      "request": "四年级数学课程",
       "expect": {
         "status": "ready",
         "explicit_slots": ["core_topic", "grade_level", "format_preferences"],
-        "inferred_slots": ["resource_types"],
-        "unknown_slots": ["file_formats"],
-        "must": ["可打印"],
-        "prefer": ["带答案"],
+        "inferred_slots": ["learning_domain"],
+        "omitted_slots": ["resource_types", "file_formats"],
+        "must": [],
+        "prefer": [],
         "exclude": []
       }
     },
@@ -40,7 +40,7 @@
         "status": "ready",
         "explicit_slots": ["core_topic", "resource_types"],
         "slot_values": {"resource_types": ["不限"]},
-        "unknown_slots": ["format_preferences", "file_formats"]
+        "omitted_slots": ["format_preferences", "file_formats"]
       }
     },
     {
@@ -158,7 +158,7 @@
       "request": "推荐几个古诗启蒙动画",
       "expect": {
         "status": "ready",
-        "must_not_clarify": ["source_preferences", "platform"]
+        "must_not_clarify": ["source_constraints", "platform"]
       }
     },
     {
@@ -166,7 +166,7 @@
       "request": "先给我看看有哪些儿童情绪管理资源",
       "expect": {
         "status": "ready",
-        "must_not_clarify": ["resource_types", "format_preferences", "file_formats", "source_preferences"]
+        "must_not_clarify": ["resource_types", "format_preferences", "file_formats", "source_constraints"]
       }
     },
     {
@@ -196,7 +196,7 @@
       "request": "找适合小学生了解太阳系的资源",
       "expect": {
         "status": "ready",
-        "unknown_slots": ["resource_types", "format_preferences", "file_formats"],
+        "omitted_slots": ["resource_types", "format_preferences", "file_formats"],
         "forbid_assumption": "默认使用视频、图文或文档"
       }
     },
@@ -207,7 +207,7 @@
         "status": "ready",
         "inferred_slots": ["resource_types"],
         "explicit_slots": ["format_preferences"],
-        "unknown_slots": ["file_formats"],
+        "omitted_slots": ["file_formats"],
         "must": ["可打印"],
         "forbid_file_formats": ["可打印"]
       }

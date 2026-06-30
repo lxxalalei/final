@@ -70,23 +70,20 @@ skill-name/
 ```json
 {
   "_meta": {
-    "stage": 1,
+    "schema_version": "intent-spec/v1",
     "session_id": "...",
-    "skill": "resource-intent",
-    "created_at": "ISO 8601",
-    "input_from": "request.json",
-    "schema_version": "intent-spec/v1"
+    "created_at": "ISO 8601"
   },
   "_summary": {},
   "data": {}
 }
 ```
 
-- `_meta`：来源和契约版本。
-- `_summary`：flow 调度所需的最小信息。
+- `_meta`：只保留版本、会话和写入时间；阶段、写入者和上游可由固定文件关系确定。
+- `_summary`：仅在 Flow 需要快速读取状态或计数时使用；没有调度信息的阶段省略。
 - `data`：下游需要的完整阶段产物。
 
-生产者负责定义输出契约；消费者必须先校验版本。字段变更时升级 schema 版本，不静默改变旧字段含义。
+不要在 `data` 重复版本，不要复制上游对象，不要保存展示统计或没有消费者的模型思考字段。`_summary` 中的计数必须能从 `data` 核对。生产者负责定义输出契约；消费者必须先校验版本。
 
 ## 模型与确定性逻辑边界
 

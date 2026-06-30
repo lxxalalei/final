@@ -32,7 +32,6 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 - `data.raw_request`：当前原始需求。
 - `data.conversation_evidence`：与当前需求有关的历史话语。
-- `data.user_confirmed_facts`：用户已经确认、不得被推翻的事实。
 
 不要从快照以外的聊天记忆补充事实。目录不存在或输入不符合契约时，返回错误给 flow，不自行创建会话或生成 session ID。
 
@@ -42,7 +41,7 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 2. **语义优先**：理解“找点题练练手”意味着练习目标，不依赖关键词硬匹配。
 3. **证据可追溯**：`explicit` 和 `inferred` 都要记录支持它的短文本证据。
 4. **推断与事实分开**：合理推断标记 `inferred`，低风险补全标记 `defaulted`。
-5. **未知优于臆测**：无法可靠判断时使用 `unknown`，不要用看似完整的错误值填满结构。
+5. **未知优于臆测**：无法可靠判断时省略该槽位，不要用空对象或看似完整的错误值填满结构。
 6. **动态调整**：根据主题、表达方式、上下文和约束决定抽取深度，不要求每次需求都具有相同信息量。
 7. **不提前做搜索决策**：不选择平台、不生成可执行查询、不写 `site:`、不分配查询数量。
 
@@ -54,13 +53,12 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 按以下顺序处理冲突：
 
-1. `user_confirmed_facts`
-2. 当前 `raw_request`
-3. 当前需求相关的 `conversation_evidence`
-4. 有充分语义依据的推断
-5. 低风险默认值
+1. 当前 `raw_request`
+2. 当前需求相关的 `conversation_evidence`；较新的用户回答可以补充或修正原始请求
+3. 有充分语义依据的推断
+4. 低风险默认值
 
-如果两条用户证据互相冲突，不替用户决定；记录到 `ambiguities`，再判断是否必须澄清。
+如果两条用户证据互相冲突，不替用户决定；判断冲突是否会改变搜索方向，必要时澄清。
 
 ### 2. 先提取约束，再提取偏好
 
@@ -78,10 +76,9 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 ```json
 {
-  "value": "小学三年级",
+  "value": "小学四年级",
   "status": "explicit",
-  "confidence": 1.0,
-  "evidence": ["给三年级孩子找数学题"]
+  "evidence": ["四年级数学课程"]
 }
 ```
 
@@ -90,7 +87,8 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 - `explicit`：用户直接表达或明确确认。
 - `inferred`：可由语义或字段关系可靠推出。
 - `defaulted`：为继续流程使用的低风险默认。
-- `unknown`：现有证据不足。
+
+不输出主观置信分。`status + evidence` 已足以区分事实、推断和默认值。只输出有值的槽位；未知槽位直接省略。
 
 年龄和年级可以互相推断，但必须标记 `inferred`；教材版本、付费接受度、资料类型等不能只凭主题擅自推断。
 
@@ -102,7 +100,7 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 一个资源可以属于多个大类。例如“PDF 数学试卷”应保留 `resource_types=["文档类", "练习类"]`、`format_preferences=["试卷"]`、`file_formats=["PDF"]`。“可打印”是使用或交付约束，不是文件格式；按语气写入 must 或 prefer。
 
-用户没有直接说明，且上下文或使用场景也不足以可靠推出资料类型、具体形态或文件格式时，将对应槽位保留为 `unknown`，不要替用户默认成视频、图文或文档。Search 负责依据主题规划多形态覆盖。用户明确说“形式不限”“什么类型都可以”时，记录 `resource_types=["不限"]` 且标记 `explicit`，这与没有提供信息不同。
+用户没有直接说明，且上下文或使用场景也不足以可靠推出资料类型、具体形态或文件格式时，省略对应槽位，不要替用户默认成视频、图文或文档。Search 负责依据主题规划多形态覆盖。用户明确说“形式不限”“什么类型都可以”时，记录 `resource_types=["不限"]` 且标记 `explicit`，这与没有提供信息不同。
 
 ### 4. 判断是否澄清
 
@@ -110,7 +108,7 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 | 判断门 | 需要澄清 | 不需要澄清 |
 |---|---|---|
-| 学习对象 | 只有“找点学习资源”“孩子学不好”，无法形成具体学习对象 | 已能形成“恐龙科普”“三年级应用题”“情绪管理绘本”等主题 |
+| 学习对象 | 只有“找点学习资源”“孩子学不好”，无法形成具体学习对象 | 已能形成“恐龙科普”“四年级数学课程”“情绪管理绘本”等主题 |
 | 语义分叉 | “编程”“英语”“国学”等可能指向差异很大的学习路线，且上下文不能消歧 | 虽有多个细分方向，但可以用多角度搜索共同覆盖 |
 | 事实冲突 | 年龄与年级、教材版本、必须条件之间出现明确冲突 | 仅缺少年龄、平台、形式或排序偏好 |
 | 硬约束 | must 与 exclude 互相冲突，或必须条件无法判断真实含义 | 只是“最好”“优先”“有的话”等软偏好 |
@@ -120,7 +118,7 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 - 没说年龄，但主题本身已经明确且不涉及明显适龄风险。
 - 没说视频、音频或文档；Search 可以多形态覆盖，Selector 可以让用户选择。
 - 没指定平台；平台选择本来就是 Search 的职责。
-- 没说难度；可以保留 unknown，或在低风险场景采用透明默认。
+- 没说难度；可以省略，或在低风险场景采用透明默认。
 - 没提供所有背景原因；只要目标已经可搜索即可。
 
 必须优先澄清的对象按顺序是：
@@ -134,7 +132,7 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 使用“影响测试”：如果不问，Search 是否很可能搜索到另一类资源？如果只是候选排序不同，不问。
 
 - 会显著改变：`status=needs_clarification`。
-- 只影响排序或可后续筛选：保留 unknown/defaulted，`status=ready`。
+- 只影响排序或可后续筛选：省略未知槽位或使用透明默认，`status=ready`。
 
 澄清只问一个影响最大的自然语言问题，不把多个问题拼在一起。详细规则见 `references/clarification-rules.md`。
 
@@ -143,7 +141,7 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 - “想让孩子学编程” → 问 Scratch、Python 还是机器人，因为路线完全不同。
 - “孩子数学不好” → 问最想解决哪类问题，例如计算、应用题或概念理解。
 - “找恐龙科普，形式都行” → 不问年龄和形式，先搜索多形态候选。
-- “给三年级孩子找数学题” → 不问具体年龄，年级已经足以规划。
+- “四年级数学课程” → 不问具体年龄或教材版本，当前主题已经足以规划。
 - “不要视频，最好路上听” → 不问形式，已可推断音频方向并记录证据。
 - “6 岁的四年级孩子” → 澄清年龄和年级冲突，因为会改变难度判断。
 
@@ -151,12 +149,16 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 ```json
 {
-  "status": "needs_clarification",
-  "clarification": {
-    "required": true,
-    "question": "你说的编程更偏向 Scratch 动画，还是机器人编程？",
-    "reason": "两种方向会使用不同资源和平台",
-    "missing_information": ["core_topic"]
+  "_summary": {
+    "status": "needs_clarification",
+    "question": "你说的编程更偏向 Scratch 动画，还是机器人编程？"
+  },
+  "data": {
+    "status": "needs_clarification",
+    "clarification": {
+      "question": "你说的编程更偏向 Scratch 动画，还是机器人编程？",
+      "reason": "两种方向会使用不同资源和平台"
+    }
   }
 }
 ```
@@ -175,31 +177,29 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 ### 6. 记录假设
 
-每个 `defaulted` 槽位都必须在 `assumptions` 中有对应的人类可读说明。不要把 `inferred` 或 `unknown` 混入默认假设。
+每个 `defaulted` 槽位都必须在 `assumptions` 中有对应的人类可读说明。没有默认假设时省略 `assumptions`；不要把 `inferred` 混入默认假设。
 
 ### 7. 写入并校验
 
-写入三层包装：
+写入精简 envelope：
 
 ```json
 {
   "_meta": {
-    "stage": 1,
+    "schema_version": "intent-spec/v1",
     "session_id": "继承 request.json",
-    "skill": "resource-intent",
-    "created_at": "ISO 8601",
-    "input_from": "request.json",
-    "schema_version": "intent-spec/v1"
+    "created_at": "ISO 8601"
   },
   "_summary": {
-    "status": "ready",
-    "core_topic": "小学三年级数学练习题",
-    "target_age": "8-9岁",
-    "clarification_required": false,
-    "clarification_question": null,
-    "assumptions": []
+    "status": "ready"
   },
-  "data": {}
+  "data": {
+    "status": "ready",
+    "raw_request": "用户最初请求原文",
+    "slots": {},
+    "constraints": {},
+    "search_concepts": {}
+  }
 }
 ```
 
@@ -215,7 +215,7 @@ python scripts/validate_output.py {session_dir}/stage1_intent.json
 
 - `ready`：结构校验通过，flow 可以调用 resource-search。
 - `needs_clarification`：结构校验通过，flow 必须先向用户提问。
-- 只向 flow 返回 `_summary` 和输出路径，不直接向用户展示内容。
+- 只向 flow 返回 `_summary` 和输出路径，不直接向用户展示完整 Intent。
 
 ## 参考资料
 

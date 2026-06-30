@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate resource-intent output using only the Python standard library."""
+"""Validate the compact intent-spec/v1 output."""
 
 from __future__ import annotations
 
@@ -13,12 +13,10 @@ from typing import Any
 SLOT_NAMES = {
     "core_topic", "learning_domain", "target_age", "grade_level",
     "learning_goal", "difficulty", "resource_types", "format_preferences",
-    "file_formats",
-    "source_preferences", "use_scenario", "version", "language",
-    "search_mode",
+    "file_formats", "use_scenario", "version", "language", "search_mode",
 }
-ARRAY_SLOTS = {"resource_types", "format_preferences", "file_formats", "source_preferences"}
-STATUSES = {"explicit", "inferred", "defaulted", "unknown"}
+ARRAY_SLOTS = {"resource_types", "format_preferences", "file_formats"}
+STATUSES = {"explicit", "inferred", "defaulted"}
 DIFFICULTIES = {"启蒙", "基础", "同步", "进阶", "竞赛", "不限"}
 RESOURCE_TYPES = {"视频类", "音频类", "文档类", "练习类", "图文类", "图片类", "互动类", "活动类", "不限"}
 FORMATS = {
@@ -39,41 +37,42 @@ SEARCH_MODES = {"standard", "exhaustive"}
 
 
 def load_json(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        value = json.load(handle)
+    value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError("根节点必须是 object")
     return value
 
 
+def _string_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) and item.strip() for item in value)
+
+
 def validate(document: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-
+    if set(document) != {"_meta", "_summary", "data"}:
+        errors.append("根节点只能包含 _meta、_summary 和 data")
     meta = document.get("_meta")
     summary = document.get("_summary")
     data = document.get("data")
     if not isinstance(meta, dict):
         return ["缺少 object: _meta"]
-    if not isinstance(summary, dict):
-        return ["缺少 object: _summary"]
     if not isinstance(data, dict):
         return ["缺少 object: data"]
+    if not isinstance(summary, dict):
+        return ["缺少 object: _summary"]
 
-    expected_meta = {
-        "stage": 1,
-        "skill": "resource-intent",
-        "input_from": "request.json",
-        "schema_version": "intent-spec/v1",
-    }
-    for key, expected in expected_meta.items():
-        if meta.get(key) != expected:
-            errors.append(f"_meta.{key} 必须为 {expected!r}")
+    allowed_meta = {"schema_version", "session_id", "created_at"}
+    if set(meta) != allowed_meta:
+        errors.append("_meta 只能包含 schema_version、session_id、created_at")
+    if meta.get("schema_version") != "intent-spec/v1":
+        errors.append("_meta.schema_version 必须为 intent-spec/v1")
     for key in ("session_id", "created_at"):
         if not isinstance(meta.get(key), str) or not meta[key].strip():
             errors.append(f"_meta.{key} 必须是非空字符串")
 
-    if data.get("schema_version") != "intent-spec/v1":
-        errors.append("data.schema_version 必须为 intent-spec/v1")
+    allowed_data = {"status", "raw_request", "slots", "constraints", "search_concepts", "clarification", "assumptions"}
+    if set(data) - allowed_data:
+        errors.append(f"data 存在未定义字段: {sorted(set(data) - allowed_data)}")
     status = data.get("status")
     if status not in {"ready", "needs_clarification"}:
         errors.append("data.status 必须为 ready 或 needs_clarification")
@@ -84,38 +83,33 @@ def validate(document: dict[str, Any]) -> list[str]:
     if not isinstance(slots, dict):
         errors.append("data.slots 必须是 object")
         slots = {}
-    missing_slots = SLOT_NAMES - set(slots)
     extra_slots = set(slots) - SLOT_NAMES
-    if missing_slots:
-        errors.append(f"data.slots 缺少字段: {sorted(missing_slots)}")
     if extra_slots:
         errors.append(f"data.slots 存在未定义字段: {sorted(extra_slots)}")
-
-    for name in sorted(SLOT_NAMES & set(slots)):
-        slot = slots[name]
+    for name, slot in slots.items():
         if not isinstance(slot, dict):
             errors.append(f"slots.{name} 必须是 object")
             continue
+        if set(slot) != {"value", "status", "evidence"}:
+            errors.append(f"slots.{name} 只能包含 value、status、evidence")
         slot_status = slot.get("status")
-        confidence = slot.get("confidence")
-        evidence = slot.get("evidence")
         value = slot.get("value")
+        evidence = slot.get("evidence")
         if slot_status not in STATUSES:
             errors.append(f"slots.{name}.status 非法")
-        if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not 0 <= confidence <= 1:
-            errors.append(f"slots.{name}.confidence 必须在 0-1")
+        if name in ARRAY_SLOTS:
+            if not _string_list(value):
+                errors.append(f"slots.{name}.value 必须是非空字符串数组")
+        elif not isinstance(value, str) or not value.strip():
+            errors.append(f"slots.{name}.value 必须是非空字符串")
         if not isinstance(evidence, list) or any(not isinstance(item, str) for item in evidence):
             errors.append(f"slots.{name}.evidence 必须是字符串数组")
             evidence = []
-        if name in ARRAY_SLOTS:
-            if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-                errors.append(f"slots.{name}.value 必须是字符串数组")
-        elif value is not None and not isinstance(value, str):
-            errors.append(f"slots.{name}.value 必须是字符串或 null")
-        if slot_status == "explicit" and not evidence:
-            errors.append(f"slots.{name} 标为 explicit 时必须提供 evidence")
-        if slot_status == "unknown" and value not in (None, []):
-            errors.append(f"slots.{name} 标为 unknown 时 value 必须为空")
+        if slot_status in {"explicit", "inferred"} and not evidence:
+            errors.append(f"slots.{name} 标为 {slot_status} 时必须提供 evidence")
+
+    if status == "ready" and not slots.get("core_topic", {}).get("value"):
+        errors.append("ready 状态必须有 core_topic")
 
     difficulty = slots.get("difficulty", {}).get("value") if isinstance(slots.get("difficulty"), dict) else None
     if difficulty is not None and difficulty not in DIFFICULTIES:
@@ -128,13 +122,10 @@ def validate(document: dict[str, Any]) -> list[str]:
         errors.append(f"format_preferences 含非法值: {sorted(set(formats) - FORMATS)}")
     file_formats = slots.get("file_formats", {}).get("value", []) if isinstance(slots.get("file_formats"), dict) else []
     if isinstance(file_formats, list):
-        noncanonical = [item for item in file_formats if isinstance(item, str) and item != item.upper()]
-        if noncanonical:
-            errors.append(f"file_formats 必须使用大写规范值: {sorted(noncanonical)}")
+        if any(item != item.upper() for item in file_formats):
+            errors.append("file_formats 必须使用大写规范值")
         if set(file_formats) - FILE_FORMATS:
             errors.append(f"file_formats 含非法值: {sorted(set(file_formats) - FILE_FORMATS)}")
-        if "可打印" in file_formats or "电子版" in file_formats:
-            errors.append("可打印/电子版是约束或形态，不是 file_formats")
     search_mode = slots.get("search_mode", {}).get("value") if isinstance(slots.get("search_mode"), dict) else None
     if search_mode is not None and search_mode not in SEARCH_MODES:
         errors.append(f"search_mode 非法: {search_mode!r}")
@@ -143,12 +134,13 @@ def validate(document: dict[str, Any]) -> list[str]:
     if not isinstance(constraints, dict):
         errors.append("data.constraints 必须是 object")
         constraints = {}
-    for key in ("must", "prefer", "exclude"):
-        value = constraints.get(key)
-        if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+    elif set(constraints) - {"must", "prefer", "exclude"}:
+        errors.append("constraints 只能包含 must、prefer、exclude")
+    for key, value in constraints.items():
+        if not _string_list(value):
             errors.append(f"constraints.{key} 必须是非空字符串数组")
-    must = set(constraints.get("must", [])) if isinstance(constraints.get("must"), list) else set()
-    excluded = set(constraints.get("exclude", [])) if isinstance(constraints.get("exclude"), list) else set()
+    must = set(constraints.get("must", []))
+    excluded = set(constraints.get("exclude", []))
     if must & excluded:
         errors.append(f"must 与 exclude 冲突: {sorted(must & excluded)}")
 
@@ -156,65 +148,48 @@ def validate(document: dict[str, Any]) -> list[str]:
     if not isinstance(concepts, dict):
         errors.append("data.search_concepts 必须是 object")
     else:
-        for key in ("canonical_terms", "synonyms", "related_terms"):
-            value = concepts.get(key)
-            if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-                errors.append(f"search_concepts.{key} 必须是字符串数组")
+        extra = set(concepts) - {"canonical_terms", "synonyms", "related_terms"}
+        if extra:
+            errors.append(f"search_concepts 存在未定义字段: {sorted(extra)}")
+        for key, value in concepts.items():
+            if not _string_list(value):
+                errors.append(f"search_concepts.{key} 必须是非空字符串数组")
 
     clarification = data.get("clarification")
-    if not isinstance(clarification, dict):
-        errors.append("data.clarification 必须是 object")
-        clarification = {}
-    required = clarification.get("required")
-    question = clarification.get("question")
-    if not isinstance(required, bool):
-        errors.append("clarification.required 必须是 boolean")
     if status == "needs_clarification":
-        if required is not True:
-            errors.append("needs_clarification 状态要求 clarification.required=true")
-        if not isinstance(question, str) or not question.strip():
-            errors.append("needs_clarification 状态必须提供 question")
-    if status == "ready" and required is not False:
-        errors.append("ready 状态要求 clarification.required=false")
-
-    assumptions = data.get("assumptions")
-    if not isinstance(assumptions, list) or any(not isinstance(item, str) for item in assumptions):
-        errors.append("data.assumptions 必须是字符串数组")
-        assumptions = []
+        if not isinstance(clarification, dict) or set(clarification) != {"question", "reason"}:
+            errors.append("needs_clarification 状态必须提供仅含 question、reason 的 clarification")
+        else:
+            for key in ("question", "reason"):
+                if not isinstance(clarification.get(key), str) or not clarification[key].strip():
+                    errors.append(f"clarification.{key} 必须是非空字符串")
+    elif clarification is not None:
+        errors.append("ready 状态不得输出 clarification")
 
     if summary.get("status") != status:
         errors.append("_summary.status 必须与 data.status 一致")
-    if summary.get("clarification_required") != required:
-        errors.append("_summary.clarification_required 必须与 data.clarification.required 一致")
-    if summary.get("clarification_question") != question:
-        errors.append("_summary.clarification_question 必须与 data.clarification.question 一致")
-    if status == "ready" and summary.get("clarification_question") is not None:
-        errors.append("ready 状态要求 _summary.clarification_question=null")
-    if status == "needs_clarification" and (
-        not isinstance(summary.get("clarification_question"), str)
-        or not summary["clarification_question"].strip()
-    ):
-        errors.append("needs_clarification 状态要求 _summary.clarification_question 为非空字符串")
-    if summary.get("assumptions") != assumptions:
-        errors.append("_summary.assumptions 必须与 data.assumptions 一致")
-    core_topic = slots.get("core_topic", {}).get("value") if isinstance(slots.get("core_topic"), dict) else None
-    target_age = slots.get("target_age", {}).get("value") if isinstance(slots.get("target_age"), dict) else None
-    if summary.get("core_topic") != core_topic:
-        errors.append("_summary.core_topic 必须与 slots.core_topic.value 一致")
-    if summary.get("target_age") != target_age:
-        errors.append("_summary.target_age 必须与 slots.target_age.value 一致")
-    if status == "ready" and not core_topic:
-        errors.append("ready 状态必须有 core_topic")
+    if status == "ready":
+        if set(summary) != {"status"}:
+            errors.append("ready 状态的 _summary 只能包含 status")
+    elif status == "needs_clarification":
+        question = clarification.get("question") if isinstance(clarification, dict) else None
+        if set(summary) != {"status", "question"} or summary.get("question") != question:
+            errors.append("needs_clarification 的 _summary.question 必须与 data.clarification.question 一致")
+
+    assumptions = data.get("assumptions")
+    if assumptions is not None and not _string_list(assumptions):
+        errors.append("data.assumptions 必须是非空字符串数组")
+    if any(isinstance(slot, dict) and slot.get("status") == "defaulted" for slot in slots.values()) and not assumptions:
+        errors.append("存在 defaulted 槽位时必须说明 assumptions")
 
     for forbidden in ("queries", "search_tasks", "selected_platforms"):
         if forbidden in data:
             errors.append(f"Intent 不得输出搜索执行字段: data.{forbidden}")
-
     return errors
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="校验 intent-spec/v1 输出")
+    parser = argparse.ArgumentParser(description="校验精简 intent-spec/v1 输出")
     parser.add_argument("file", type=Path)
     args = parser.parse_args()
     try:

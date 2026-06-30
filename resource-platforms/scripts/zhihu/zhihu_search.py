@@ -5,7 +5,7 @@
   1. 优先用知乎搜索 API（需要 z_c0 Cookie / Authorization Bearer token）
   2. 无认证信息时降级为通用 HTTP 页面抓取 + 解析，返回有限结果
 
-输出格式遵循 resource-platforms/references/schemas/platform-search-contract.md：
+输出由 adapter 归一化，接口见 resource-platforms/references/search-interface.md：
   resource_id / title / source_url / platform 为必填字段。
 
 用法:

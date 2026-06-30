@@ -2,9 +2,9 @@
   "schema_version": "search-routing-golden/v1",
   "cases": [
     {
-      "id": "official-textbook",
-      "intent": "小学三年级数学人教版同步练习，优先官方",
-      "expect": {"required_platforms": ["smartedu", "generic"], "query_angles": ["年级学科版本", "同步练习"]}
+      "id": "grade-four-math-course",
+      "intent": "四年级数学课程",
+      "expect": {"required_platforms": ["smartedu", "bilibili", "generic"], "query_angles": ["同步课程", "知识点讲解", "公开课程"]}
     },
     {
       "id": "audio-commute",
