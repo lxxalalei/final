@@ -52,10 +52,11 @@ Downloader 追加：
 - `degraded_level`：`Level 0` 至 `Level 3`
 - `file_path`
 - `file_size`：字节数，number
+- `file_format`
 - `fetch_time`
 - `fetch_method`
-- `error_code`、`error_message`
 - `degraded_content`
+- `error`：统一错误对象；成功时为 `null`
 
 失败资源也必须保留。
 
@@ -63,9 +64,11 @@ Downloader 追加：
 
 Library manager 追加：
 
+- `archive_status`：`archived` / `skipped` / `failed`
 - `library_path`
 - `archive_time`
 - `dedup_status`：`new` / `duplicate` / `skipped`
+- `archive_error`：归档失败时的统一错误对象，否则为 `null`
 
 ## 平台标识
 

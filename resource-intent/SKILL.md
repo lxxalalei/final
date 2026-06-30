@@ -22,6 +22,8 @@ Schema 约束输出结构，不替代语义推理。不要为了满足字段而�
 
 ## 输入与输出
 
+文件 envelope、字段类型和阶段交接以 `../docs/pipeline-data-contract.md` 为统一契约。
+
 - 输入：`{session_dir}/request.json`，契约见 `schemas/input.schema.json`。
 - 输出：`{session_dir}/stage1_intent.json`，契约见 `schemas/output.schema.json`。
 - 输出版本：`intent-spec/v1`。

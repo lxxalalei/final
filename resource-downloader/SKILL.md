@@ -28,6 +28,8 @@ description: 儿童学习资源下载调度器 Skill，负责根据资源平台�
 
 ## 输入格式
 
+Stage 4→5 的文件结构、下载状态和条件字段以 `../docs/pipeline-data-contract.md` 为统一契约。
+
 接收来自 resource-selector 的选定资源列表，每个资源符合统一元数据规范。
 
 **输入示例：**
@@ -432,7 +434,8 @@ Level 3：保存标题 + 链接 + 摘要
     "session_id": "{session_id}",
     "skill": "resource-downloader",
     "created_at": "ISO时间",
-    "input_from": "stage4_selection.json"
+    "input_from": "stage4_selection.json",
+    "schema_version": "download/v1"
   },
   "_summary": {
     "total_count": 5,
@@ -441,6 +444,7 @@ Level 3：保存标题 + 链接 + 摘要
     "failed_count": 1
   },
   "data": {
+    "schema_version": "download/v1",
     "total_count": 5,
     "success_count": 3,
     "degraded_count": 1,
@@ -458,14 +462,12 @@ Level 3：保存标题 + 链接 + 摘要
         "degraded_level": "Level 0 / Level 1 / Level 2 / Level 3",
         "file_path": "{session_dir}/downloads/xxx.mp4",
         "file_size": 156000000,
+        "file_format": "mp4",
         "fetch_time": "2026-06-26T15:00:00+08:00",
         "fetch_method": "获取方式说明",
 
-        "// 失败/降级时额外字段": "",
-        "error_code": "NETWORK_TIMEOUT / CONTENT_PREMIUM_ONLY / ...",
-        "error_message": "错误信息",
-        "degraded_content": "降级内容说明",
-        "alternative_recommendations": []
+        "degraded_content": null,
+        "error": null
       }
     ]
   }
@@ -473,7 +475,7 @@ Level 3：保存标题 + 链接 + 摘要
 ```
 
 - `_summary`（flow 读这个）：总数、成功/降级/失败各多少
-- `data`（下游 library 读这个）：每个资源在上游字段基础上新增——`download_status`（success/degraded/failed）、`degraded_level`（Level 0-3）、`file_path`（本地路径）、`file_size`（字节）、`fetch_time`、`fetch_method`、失败时附加 `error_code`/`error_message`、降级时附加 `degraded_content`、失败时附加 `alternative_recommendations`
+- `data`（下游 library 读这个）：每个资源在上游字段基础上新增——`download_status`（success/degraded/failed）、`degraded_level`（Level 0-3）、`file_path`（本地路径）、`file_size`（字节）、`file_format`、`fetch_time`、`fetch_method`、`degraded_content` 和统一 `error` 对象；不适用字段写 `null`
 - **保留规则**：上游全部字段原样带过来；`failed` 的资源也要写进文件
 
 ### 4. 完成后

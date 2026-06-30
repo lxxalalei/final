@@ -1,5 +1,7 @@
 # 六阶段数据流转指南
 
+完整字段、状态、错误对象和计数不变量以 [`pipeline-data-contract.md`](pipeline-data-contract.md) 为准。本文只说明阶段职责和数据流向。
+
 ## 1. 总览
 
 ```text

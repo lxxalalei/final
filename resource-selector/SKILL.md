@@ -22,6 +22,8 @@ description: 学习资源候选筛选与用户选择 Skill。用于读取平台�
 
 ## 输入
 
+Stage 3→4 的文件结构、资源追加字段和计数规则以 `../docs/pipeline-data-contract.md` 为统一契约。
+
 从 flow 获取：
 
 - `{session_dir}`：会话目录绝对路径。
@@ -104,7 +106,8 @@ description: 学习资源候选筛选与用户选择 Skill。用于读取平台�
     "session_id": "继承上游",
     "skill": "resource-selector",
     "created_at": "ISO 8601",
-    "input_from": "stage3_search_results.json"
+    "input_from": "stage3_search_results.json",
+    "schema_version": "selection/v1"
   },
   "_summary": {
     "raw_count": 72,
@@ -118,6 +121,8 @@ description: 学习资源候选筛选与用户选择 Skill。用于读取平台�
     }
   },
   "data": {
+    "schema_version": "selection/v1",
+    "intent_ref": "stage1_intent.json",
     "selected_count": 5,
     "selection_mode": "manual",
     "resources": [],

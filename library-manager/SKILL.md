@@ -718,6 +718,8 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
 
 ## 读写文件
 
+Stage 5→6 的文件结构、归档状态和计数规则以 `../docs/pipeline-data-contract.md` 为统一契约。
+
 ### 1. 获取任务路径
 - 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage5_download.json`）、输出文件名（通常 `stage6_archive.json`）
 
@@ -736,16 +738,22 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
     "session_id": "{session_id}",
     "skill": "library-manager",
     "created_at": "ISO时间",
-    "input_from": "stage5_download.json"
+    "input_from": "stage5_download.json",
+    "schema_version": "archive/v1"
   },
   "_summary": {
+    "total_count": 4,
     "archived_count": 3,
     "skipped_count": 1,
+    "failed_count": 0,
     "dedup_stats": {"new": 3, "duplicate": 1}
   },
   "data": {
+    "schema_version": "archive/v1",
+    "total_count": 4,
     "archived_count": 3,
     "skipped_count": 1,
+    "failed_count": 0,
     "resources": [
       {
         "// 说明": "保留 stage5 全部字段 + 新增归档字段",
@@ -755,17 +763,19 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
         "download_status": "...",
         "...": "（stage5 的所有字段原样保留）",
 
+        "archive_status": "archived / skipped / failed",
         "library_path": "学习资料库/数学/小学三年级/四则混合运算/",
         "archive_time": "2026-06-26T16:00:00+08:00",
-        "dedup_status": "new / duplicate / skipped"
+        "dedup_status": "new / duplicate / skipped",
+        "archive_error": null
       }
     ]
   }
 }
 ```
 
-- `_summary`（flow 读这个）：归档成功数、跳过数、去重统计
-- `data`（flow 汇总报告读这个）：每个资源在上游字段基础上新增——`library_path`（资料库内路径）、`archive_time`（归档时间 ISO）、`dedup_status`（new/duplicate/skipped）
+- `_summary`（flow 读这个）：总数、归档成功数、跳过数、失败数和去重统计
+- `data`（flow 汇总报告读这个）：每个资源在上游字段基础上新增——`archive_status`、`library_path`（资料库内路径）、`archive_time`（归档时间 ISO）、`dedup_status`（new/duplicate/skipped）和 `archive_error`
 - **保留规则**：上游全部字段（含 download_status/file_path 等）原样带过来，flow 最终汇总报告依赖这些字段
 
 ### 4. 完成后

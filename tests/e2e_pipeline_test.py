@@ -181,7 +181,7 @@ def run_pipeline() -> list[dict]:
         "stage2_search_plan.json",
         "platform-results/v1",
         {"raw_count": 4, "success_platforms": ["smartedu", "bilibili", "generic"], "failed_platforms": [], "error_count": 0},
-        {"intent_context": intent_context, "resources": raw_resources, "platform_stats": {"smartedu": 1, "bilibili": 2, "generic": 1}, "errors": []},
+        {"schema_version": "platform-results/v1", "intent_ref": "stage1_intent.json", "intent_context": intent_context, "resources": raw_resources, "platform_stats": {"smartedu": {"status": "success", "task_count": 1, "query_count": 2, "returned_count": 1, "invalid_count": 0}, "bilibili": {"status": "success", "task_count": 1, "query_count": 2, "returned_count": 2, "invalid_count": 0}, "generic": {"status": "success", "task_count": 1, "query_count": 3, "returned_count": 1, "invalid_count": 0}}, "errors": []},
     )
 
     qualified = []
@@ -198,16 +198,16 @@ def run_pipeline() -> list[dict]:
         "stage3_search_results.json",
         "selection/v1",
         {"raw_count": 4, "candidate_count": 3, "selected_count": 1, "selection_mode": "manual", "quality_dist": {"S": 0, "A": 3, "B": 0, "C": 0}, "filter_stats": {"duplicates_removed": 0, "business_filtered": 1}},
-        {"selected_count": 1, "selection_mode": "manual", "resources": selected},
+        {"schema_version": "selection/v1", "intent_ref": "stage1_intent.json", "selected_count": 1, "selection_mode": "manual", "resources": selected, "candidate_snapshot": {"raw_count": 4, "qualified_count": 3, "filter_stats": {"duplicates_removed": 0, "business_filtered": 1}, "platform_errors": []}},
     )
 
     downloaded = copy.deepcopy(selected)
-    downloaded[0].update({"download_status": "success", "degraded_level": "Level 0", "file_path": "/tmp/downloads/math-001.pdf", "file_size": 1024, "fetch_time": "2026-06-30T10:35:00+08:00", "fetch_method": "smartedu"})
-    stage5 = envelope(5, "resource-downloader", "stage4_selection.json", "download/v1", {"total_count": 1, "success_count": 1, "degraded_count": 0, "failed_count": 0}, {"resources": downloaded})
+    downloaded[0].update({"download_status": "success", "degraded_level": "Level 0", "file_path": "/tmp/downloads/math-001.pdf", "file_size": 1024, "file_format": "pdf", "fetch_time": "2026-06-30T10:35:00+08:00", "fetch_method": "smartedu", "degraded_content": None, "error": None})
+    stage5 = envelope(5, "resource-downloader", "stage4_selection.json", "download/v1", {"total_count": 1, "success_count": 1, "degraded_count": 0, "failed_count": 0}, {"schema_version": "download/v1", "total_count": 1, "success_count": 1, "degraded_count": 0, "failed_count": 0, "resources": downloaded})
 
     archived = copy.deepcopy(downloaded)
-    archived[0].update({"library_path": "学习资料库/数学/小学三年级/math-001.pdf", "archive_time": "2026-06-30T10:36:00+08:00", "dedup_status": "new"})
-    stage6 = envelope(6, "library-manager", "stage5_download.json", "archive/v1", {"archived_count": 1, "skipped_count": 0, "dedup_stats": {"new": 1, "duplicate": 0}}, {"resources": archived})
+    archived[0].update({"archive_status": "archived", "library_path": "学习资料库/数学/小学三年级/math-001.pdf", "archive_time": "2026-06-30T10:36:00+08:00", "dedup_status": "new", "archive_error": None})
+    stage6 = envelope(6, "library-manager", "stage5_download.json", "archive/v1", {"total_count": 1, "archived_count": 1, "skipped_count": 0, "failed_count": 0, "dedup_stats": {"new": 1, "duplicate": 0, "skipped": 0}}, {"schema_version": "archive/v1", "total_count": 1, "archived_count": 1, "skipped_count": 0, "failed_count": 0, "resources": archived})
     return [stage1, stage2, stage3, stage4, stage5, stage6]
 
 

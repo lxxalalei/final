@@ -36,6 +36,8 @@ description: 学习资源平台执行层。用于按搜索计划调用各平台�
 
 ## Search 模式
 
+Stage 2→3 的文件结构和资源基础字段以 `../docs/pipeline-data-contract.md` 为统一契约。
+
 ### 输入
 
 读取 `{session_dir}/{input_file}`，默认：
@@ -118,7 +120,8 @@ description: 学习资源平台执行层。用于按搜索计划调用各平台�
     "session_id": "继承上游",
     "skill": "resource-platforms",
     "created_at": "ISO 8601",
-    "input_from": "stage2_search_plan.json"
+    "input_from": "stage2_search_plan.json",
+    "schema_version": "platform-results/v1"
   },
   "_summary": {
     "raw_count": 72,
@@ -128,9 +131,13 @@ description: 学习资源平台执行层。用于按搜索计划调用各平台�
     "invalid_count": 3
   },
   "data": {
+    "schema_version": "platform-results/v1",
+    "intent_ref": "stage1_intent.json",
     "intent_context": {
       "core_topic": "三年级数学练习题",
       "target_age": "8-9岁",
+      "grade_level": "小学三年级",
+      "learning_goal": "练习",
       "search_mode": "standard",
       "constraints": {"must": [], "prefer": [], "exclude": []}
     },

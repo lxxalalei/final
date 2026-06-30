@@ -23,6 +23,8 @@ description: 儿童学习资源获取与归档的总调度入口。用于接收�
 
 ## 会话目录
 
+所有请求、manifest 和阶段文件的结构以 `../docs/pipeline-data-contract.md` 为统一契约；本 Skill 只负责按该契约创建、调度和更新状态。
+
 为每个新需求创建：
 
 ```text
@@ -84,17 +86,20 @@ Stage 1 只能读取该快照，不依赖未持久化的聊天上下文。Flow �
 
 ```json
 {
+  "schema_version": "session-manifest/v1",
   "session_id": "20260630-1030-math-grade3",
   "user_request": "帮我找三年级数学练习题",
+  "created_at": "ISO 8601",
+  "updated_at": "ISO 8601",
   "status": "in_progress",
   "current_stage": 1,
   "stages": {
-    "stage1": {"owner": "resource-intent", "status": "pending", "output": "stage1_intent.json"},
-    "stage2": {"owner": "resource-search", "status": "pending", "output": "stage2_search_plan.json"},
-    "stage3": {"owner": "resource-platforms", "status": "pending", "output": "stage3_search_results.json"},
-    "stage4": {"owner": "resource-selector", "status": "pending", "output": "stage4_selection.json"},
-    "stage5": {"owner": "resource-downloader", "status": "pending", "output": "stage5_download.json"},
-    "stage6": {"owner": "library-manager", "status": "pending", "output": "stage6_archive.json"}
+    "stage1": {"owner": "resource-intent", "status": "pending", "input": "request.json", "output": "stage1_intent.json", "started_at": null, "completed_at": null, "summary": null, "error": null},
+    "stage2": {"owner": "resource-search", "status": "pending", "input": "stage1_intent.json", "output": "stage2_search_plan.json", "started_at": null, "completed_at": null, "summary": null, "error": null},
+    "stage3": {"owner": "resource-platforms", "status": "pending", "input": "stage2_search_plan.json", "output": "stage3_search_results.json", "started_at": null, "completed_at": null, "summary": null, "error": null},
+    "stage4": {"owner": "resource-selector", "status": "pending", "input": "stage3_search_results.json", "output": "stage4_selection.json", "started_at": null, "completed_at": null, "summary": null, "error": null},
+    "stage5": {"owner": "resource-downloader", "status": "pending", "input": "stage4_selection.json", "output": "stage5_download.json", "started_at": null, "completed_at": null, "summary": null, "error": null},
+    "stage6": {"owner": "library-manager", "status": "pending", "input": "stage5_download.json", "output": "stage6_archive.json", "started_at": null, "completed_at": null, "summary": null, "error": null}
   }
 }
 ```

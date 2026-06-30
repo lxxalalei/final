@@ -16,6 +16,8 @@ Search 是搜索策略层，不是字段转换器。它需要理解上一步需�
 
 ## 输入与输出
 
+文件 envelope、字段类型和阶段交接以 `../docs/pipeline-data-contract.md` 为统一契约。
+
 - 输入：`{session_dir}/stage1_intent.json`，要求 `data.status=ready`。
 - 输出：`{session_dir}/stage2_search_plan.json`。
 - 版本：`search-plan/v1`。

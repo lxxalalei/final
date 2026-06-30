@@ -81,6 +81,29 @@ class TestSkillPipelineContract(unittest.TestCase):
         for _, _, filename in STAGES:
             self.assertIn(filename, guide)
 
+    def test_pipeline_data_contract_covers_every_handoff(self) -> None:
+        contract_path = ROOT / "docs/pipeline-data-contract.md"
+        self.assertTrue(contract_path.is_file())
+        contract = contract_path.read_text(encoding="utf-8")
+        for filename in ("manifest.json", "request.json", *(item[2] for item in STAGES)):
+            self.assertIn(filename, contract)
+        for version in (
+            "request/v1",
+            "session-manifest/v1",
+            "intent-spec/v1",
+            "search-plan/v1",
+            "platform-results/v1",
+            "selection/v1",
+            "download/v1",
+            "archive/v1",
+        ):
+            self.assertIn(version, contract)
+        self.assertIn("字段传递与计数不变量", contract)
+        self.assertIn("统一错误对象", contract)
+
+    def test_flow_points_to_authoritative_data_contract(self) -> None:
+        self.assertIn("docs/pipeline-data-contract.md", read("learning-resource-flow/SKILL.md"))
+
     def test_removed_duplicate_flow_draft_and_readme(self) -> None:
         self.assertFalse((ROOT / "learning-resource-flow/SKILL-建议版.md").exists())
         self.assertFalse((ROOT / "README.md").exists())
