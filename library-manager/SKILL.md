@@ -719,24 +719,24 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
 ## 读写文件
 
 ### 1. 获取任务路径
-- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage4_download.json`）、输出文件名（通常 `stage5_archive.json`）
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage5_download.json`）、输出文件名（通常 `stage6_archive.json`）
 
 ### 2. 读取上游数据
-- 读取 `{session_dir}/stage4_download.json` 的 `data` 部分
+- 读取 `{session_dir}/stage5_download.json` 的 `data` 部分
 - 提取下载结果列表
 
 ### 3. 执行归档并写入结果
 
-执行归档前去重检查 → 文件移动 → 索引更新后，将以下结构写入 `{session_dir}/stage5_archive.json`：
+执行归档前去重检查 → 文件移动 → 索引更新后，将以下结构写入 `{session_dir}/stage6_archive.json`：
 
 ```json
 {
   "_meta": {
-    "stage": 5,
+    "stage": 6,
     "session_id": "{session_id}",
     "skill": "library-manager",
     "created_at": "ISO时间",
-    "input_from": "stage4_download.json"
+    "input_from": "stage5_download.json"
   },
   "_summary": {
     "archived_count": 3,
@@ -748,12 +748,12 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
     "skipped_count": 1,
     "resources": [
       {
-        "// 说明": "保留 stage4 全部字段 + 新增归档字段",
+        "// 说明": "保留 stage5 全部字段 + 新增归档字段",
         "resource_id": "...",
         "title": "...",
         "platform": "...",
         "download_status": "...",
-        "...": "（stage4 的所有字段原样保留）",
+        "...": "（stage5 的所有字段原样保留）",
 
         "library_path": "学习资料库/数学/小学三年级/四则混合运算/",
         "archive_time": "2026-06-26T16:00:00+08:00",

@@ -414,24 +414,24 @@ Level 3：保存标题 + 链接 + 摘要
 ## 读写文件
 
 ### 1. 获取任务路径
-- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage3_select.json`）、输出文件名（通常 `stage4_download.json`）
+- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage4_select.json`）、输出文件名（通常 `stage5_download.json`）
 
 ### 2. 读取上游数据
-- 读取 `{session_dir}/stage3_select.json` 的 `data` 部分
+- 读取 `{session_dir}/stage4_select.json` 的 `data` 部分
 - 提取用户选中的资源列表
 
 ### 3. 执行下载并写入结果
 
-下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将以下结构写入 `{session_dir}/stage4_download.json`：
+下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将以下结构写入 `{session_dir}/stage5_download.json`：
 
 ```json
 {
   "_meta": {
-    "stage": 4,
+    "stage": 5,
     "session_id": "{session_id}",
     "skill": "resource-downloader",
     "created_at": "ISO时间",
-    "input_from": "stage3_select.json"
+    "input_from": "stage4_select.json"
   },
   "_summary": {
     "total_count": 5,
@@ -446,12 +446,12 @@ Level 3：保存标题 + 链接 + 摘要
     "failed_count": 1,
     "resources": [
       {
-        "// 说明": "保留 stage3 全部字段 + 新增下载结果字段",
+        "// 说明": "保留 stage4 全部字段 + 新增下载结果字段",
         "resource_id": "...",
         "title": "...",
         "platform": "...",
         "source_url": "...",
-        "...": "（stage3 的所有字段原样保留）",
+        "...": "（stage4 的所有字段原样保留）",
 
         "download_status": "success / degraded / failed",
         "degraded_level": "Level 0 / Level 1 / Level 2 / Level 3",

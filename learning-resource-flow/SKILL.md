@@ -8,9 +8,9 @@ description: 儿童学习资源获取与管理的总调度入口。接收用户�
 ## 概述
 
 本 Skill 是儿童学习资源 Skill 套件的**唯一总入口**，负责协调整个资源获取工作流：
-从用户提出需求开始，经过需求拆解、平台路由、多端搜索召回、用户选择确认、分级下载获取，最终归档到本地资料库。
+从用户提出需求开始，经过需求拆解、搜索调度、平台搜索执行、质量筛选与用户选择、分级下载获取，最终归档到本地资料库。
 
-本 Skill 不直接执行搜索或下载，而是调度 5 个业务 Skill（intent/search/selector/downloader/library-manager）和 1 个平台执行 Skill（resource-platforms）协同完成任务。
+本 Skill 不直接执行搜索或下载，而是调度 6 个 Skill 协同完成任务。
 
 ---
 
@@ -45,17 +45,18 @@ description: 儿童学习资源获取与管理的总调度入口。接收用户�
   "current_stage": 1,
   "stages": {
     "stage1": {"status": "pending", "output": "stage1_intent.json"},
-    "stage2": {"status": "pending", "output": "stage2_search.json"},
-    "stage3": {"status": "pending", "output": "stage3_select.json"},
-    "stage4": {"status": "pending", "output": "stage4_download.json"},
-    "stage5": {"status": "pending", "output": "stage5_archive.json"}
+    "stage2": {"status": "pending", "output": "stage2_search_plan.json"},
+    "stage3": {"status": "pending", "output": "stage3_candidates.json"},
+    "stage4": {"status": "pending", "output": "stage4_select.json"},
+    "stage5": {"status": "pending", "output": "stage5_download.json"},
+    "stage6": {"status": "pending", "output": "stage6_archive.json"}
   }
 }
 ```
 
 ### 2. 调度每个阶段
 
-对阶段 1→2→3→4→5 依次执行：
+对阶段 1→2→3→4→5→6 依次执行：
 - 更新 manifest.json：当前阶段标记为 `in_progress`
 - 调用对应 Skill，传递三个参数：会话目录路径、上游文件名、输出文件名
 - Skill 返回后：只读输出文件的 `_summary`，不读完整 data
@@ -84,46 +85,49 @@ description: 儿童学习资源获取与管理的总调度入口。接收用户�
 | Skill | 所在层 | 职责 | 调用阶段 |
 |-------|-------|------|---------|
 | `resource-intent` | 业务能力层 | 需求理解与查询生成 | 阶段一 |
-| `resource-search` | 业务能力层 | 搜索调度（路由+汇总+质控） | 阶段二 |
-| `resource-selector` | 业务能力层 | 候选展示与用户选择 | 阶段三 |
-| `resource-downloader` | 业务能力层 | 下载调度（分发+重试+降级） | 阶段四 |
-| `library-manager` | 业务能力层 | 资源归档、索引、管理 | 阶段五 |
-| `resource-platforms` | 平台执行层 | 具体平台的搜索+下载 | 阶段二、四（由调度层调用） |
+| `resource-search` | 业务能力层 | 搜索策略制定（路由+任务分配） | 阶段二 |
+| `resource-platforms` | 平台执行层 | 搜索执行（调度平台脚本+跨平台去重） | 阶段三 |
+| `resource-selector` | 业务能力层 | 质量评估+过滤精选+候选展示+用户选择 | 阶段四 |
+| `resource-downloader` | 业务能力层 | 下载调度（分发+重试+降级） | 阶段五 |
+| `library-manager` | 业务能力层 | 资源归档、索引、管理 | 阶段六 |
 
-> **注意**：platform skill 由 search 和 downloader 调度器直接调用，flow 不直接调用 platform skill。
->
 > **说明**：资料库检索不作为标准流程的必经步骤，用户需要时可主动调用 library-manager 查询。
 
 ---
 
 ## 阶段调度
 
-> flow 只负责"调谁、传什么参数、读什么 summary"。各阶段的具体执行逻辑、输出格式模板见 `references/output-templates.md`。
+> flow 只负责"调谁、传什么参数、读什么 summary"。
 
 ### 阶段一：需求理解
 - 调用 `resource-intent`，传 `{session_dir}` + 无上游 → 输出 `stage1_intent.json`
 - 读 `_summary`：core_topic、query_count、target_age、search_mode、assumptions
 - 向用户展示任务确认（主题/年龄/目标/资源类型/搜索模式/假设说明），确认后进阶段二
 
-### 阶段二：搜索召回
-- 调用 `resource-search`，传 `{session_dir}` + `stage1_intent.json` → 输出 `stage2_search.json`
-- 读 `_summary`：候选总数、平台覆盖、质量分布
-- 候选 < 5 个时主动询问用户是否放宽条件/换关键词/开穷尽模式
-- 候选充足则进阶段三
+### 阶段二：搜索策略
+- 调用 `resource-search`，传 `{session_dir}` + `stage1_intent.json` → 输出 `stage2_search_plan.json`
+- 读 `_summary`：platform_count、platforms、query_count、expected_results
+- 向用户展示搜索计划概要，确认后进阶段三
 
-### 阶段三：候选选择
-- 调用 `resource-selector`，传 `{session_dir}` + `stage2_search.json` → 输出 `stage3_select.json`
-- 读 `_summary`：selected_count、selection_mode
-- 用户未选任何资源则结束；选了则进阶段四
+### 阶段三：搜索执行
+- 调用 `resource-platforms`，传 `{session_dir}` + `stage2_search_plan.json` → 输出 `stage3_candidates.json`
+- 读 `_summary`：total_count（去重后总数）、raw_count（原始召回数）、platforms、has_results
+- has_results = false 或 total_count = 0 时主动询问用户是否放宽条件/换关键词/开穷尽模式
+- 有结果则进阶段四
 
-### 阶段四：下载获取
-- 调用 `resource-downloader`，传 `{session_dir}` + `stage3_select.json` → 输出 `stage4_download.json`
+### 阶段四：质量筛选与用户选择
+- 调用 `resource-selector`，传 `{session_dir}` + `stage3_candidates.json` → 输出 `stage4_select.json`
+- 读 `_summary`：total_candidates、filtered_count、selected_count、selection_mode
+- 用户未选任何资源则结束；选了则进阶段五
+
+### 阶段五：下载获取
+- 调用 `resource-downloader`，传 `{session_dir}` + `stage4_select.json` → 输出 `stage5_download.json`
 - 读 `_summary`：success_count、degraded_count、failed_count
 - 全部失败时告知用户原因并提供降级内容，询问是否换资源
-- 有成功/降级结果则进阶段五
+- 有成功/降级结果则进阶段六
 
-### 阶段五：归档入库
-- 调用 `library-manager`，传 `{session_dir}` + `stage4_download.json` → 输出 `stage5_archive.json`
+### 阶段六：归档入库
+- 调用 `library-manager`，传 `{session_dir}` + `stage5_download.json` → 输出 `stage6_archive.json`
 - 读 `_summary`：archived_count、skipped_count、dedup_stats
 - 向用户展示最终汇总：成功获取列表 + 降级列表 + 失败列表 + 归档位置
 - 更新 manifest.json 状态为 `completed`
@@ -136,7 +140,7 @@ description: 儿童学习资源获取与管理的总调度入口。接收用户�
 任何阶段用户说"算了""不要了""取消"，都立即终止流程，友好回复。
 
 ### 搜索结果太少
-如果搜索结果少于 5 个，主动询问用户：
+如果阶段三返回的结果去重后少于 5 个，主动询问用户：
 - 是否放宽条件？
 - 是否换个关键词？
 - 是否开启穷尽模式？
