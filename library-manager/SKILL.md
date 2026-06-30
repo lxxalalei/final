@@ -718,16 +718,20 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
 
 ## 读写文件
 
-### 1. 获取任务路径
-- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage5_download.json`）、输出文件名（通常 `stage6_archive.json`）
+### 1. 确认路径信息
+
+读取 `{session_dir}/manifest.json`，获取本阶段执行所需信息：
+
+- `manifest.stages.stage5.output` → 上游输入文件名（通常是 `stage5_download.json`）
+- `manifest.stages.stage6.output` → 本阶段输出文件名（通常是 `stage6_archive.json`）
 
 ### 2. 读取上游数据
-- 读取 `{session_dir}/stage5_download.json` 的 `data` 部分
+- 读取 `{session_dir}/{上游输入文件}` 的 `data` 部分
 - 提取下载结果列表
 
 ### 3. 执行归档并写入结果
 
-执行归档前去重检查 → 文件移动 → 索引更新后，将以下结构写入 `{session_dir}/stage6_archive.json`：
+执行归档前去重检查 → 文件移动 → 索引更新后，将结果写入 `{session_dir}/{manifest.stages.stage6.output}`（通常是 `stage6_archive.json`）：
 
 ```json
 {
@@ -770,7 +774,7 @@ A: 是的，这是正常的。资料库的价值就在于积累。可以定期�
 
 ### 4. 完成后
 
-- 提示 flow 生成最终汇总报告
+- 将 `manifest.json` 中 `stages.stage6.status` 更新为 `completed`，同时将 `manifest.status` 更新为 `completed`
 - 只返回 `_summary`，不在上下文中展开完整 data
 
 ---

@@ -103,23 +103,21 @@ description: 儿童学习资源下载调度器 Skill，负责根据资源平台�
 
 ## 平台路由规则
 
-### 有专属 Skill 的平台（优先走平台通道）
+### 有专属下载脚本的平台（优先走平台通道）
 
-| 平台 | Skill 路径 | Skill 状态 | 说明 |
-|------|-----------|-----------|------|
-| bilibili | `../resource-platforms/references/bilibili.md` | ✅ 可用 | B站专属，搜索+下载+反爬 |
-| ximalaya | `../resource-platforms/references/ximalaya.md` | ✅ 可用（搜索） | 喜马拉雅专属，音频下载 |
-| smartedu | `../resource-platforms/references/smartedu.md` | ✅ 可用 | 国家中小学智慧教育平台 |
-| baiduwenku | `platform-baiduwenku` | 规划中 | 百度文库文档下载 |
-| zhihu | `../resource-platforms/references/zhihu.md` | ✅ 可用 | 知乎图文提取 |
-| douyin | `../resource-platforms/references/douyin.md` | ✅ 可用 | 抖音专属，f2引擎搜索+无水印下载 |
-| weibo | `../resource-platforms/references/weibo.md` | ✅ 可用 | 微博专属，ajax搜索+用户图文下载 |
+| 平台 | 脚本路径 | 说明 |
+|------|---------|------|
+| bilibili | `./scripts/bilibili/bilibili_dl.py` | B站视频下载 |
+| douyin | `./scripts/douyin/douyin_dl.py` | 抖音无水印下载 |
+| zhihu | `./scripts/zhihu/zhihu_dl.py` | 知乎图文提取 |
+| weibo | `./scripts/weibo/weibo_dl.py` | 微博图文下载 |
+| smartedu | `../resource-platforms/scripts/smartedu/smartedu_download.py` | 国家中小学智慧教育平台（暂留在 platforms，后续拆解） |
 
-> 注：标记「✅ 可用」的平台已接入，优先走平台专属通道；其余走通用兜底通道。
+> smartedu 平台较特殊（搜索和下载共享认证模块），其下载脚本暂收录在 resource-platforms 中，后续单独拆解。
 
 ### 通用下载通道
 
-没有专属 Skill 的平台，按资源类型走通用通道：
+没有专属脚本的平台，按资源类型走通用通道：
 
 | 资源类型 | 通用工具 | 说明 |
 |---------|---------|------|
@@ -407,22 +405,28 @@ Level 3：保存标题 + 链接 + 摘要
 
 - `references/download-methods.md` - 通用下载工具使用说明（兜底方案）
 - `references/error-codes.md` - 完整错误码体系（7类前缀+30+错误码+重试策略+降级路径）
+- `references/platform-download-contract.md` - 平台下载接口规范
 - `references/troubleshooting.md` - 常见下载问题排查
+- `./scripts/{platform_id}/{platform_id}_dl.py` - 各平台专属下载脚本（bilibili/douyin/zhihu/weibo）
 
 ---
 
 ## 读写文件
 
-### 1. 获取任务路径
-- 从 flow 传入参数中获取：会话目录 `{session_dir}`、上游文件名（通常 `stage4_select.json`）、输出文件名（通常 `stage5_download.json`）
+### 1. 确认路径信息
+
+读取 `{session_dir}/manifest.json`，获取本阶段执行所需信息：
+
+- `manifest.stages.stage4.output` → 上游输入文件名（通常是 `stage4_select.json`）
+- `manifest.stages.stage5.output` → 本阶段输出文件名（通常是 `stage5_download.json`）
 
 ### 2. 读取上游数据
-- 读取 `{session_dir}/stage4_select.json` 的 `data` 部分
+- 读取 `{session_dir}/{上游输入文件}` 的 `data` 部分
 - 提取用户选中的资源列表
 
 ### 3. 执行下载并写入结果
 
-下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将以下结构写入 `{session_dir}/stage5_download.json`：
+下载的文件存入 `{session_dir}/downloads/`（归档时由 library-manager 移入正式资料库）。下载完成后，将结果写入 `{session_dir}/{manifest.stages.stage5.output}`（通常是 `stage5_download.json`）：
 
 ```json
 {
@@ -477,5 +481,5 @@ Level 3：保存标题 + 链接 + 摘要
 
 ### 4. 完成后
 
-- 提示 flow 调用 `library-manager` 继续执行
+- 将 `manifest.json` 中 `stages.stage5.status` 更新为 `completed`
 - 只返回 `_summary`，不在上下文中展开完整 data

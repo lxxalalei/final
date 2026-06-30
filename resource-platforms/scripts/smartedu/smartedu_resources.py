@@ -1047,6 +1047,78 @@ def fetch_search_results(args: argparse.Namespace, filters: dict[str, Any]) -> A
     raise RuntimeError("; ".join(errors))
 
 
+def _candidate_to_result(c: dict[str, Any]) -> dict[str, Any]:
+    """将内部 candidate 转换为 platform-search-contract 标准结果。"""
+    resource_id = c.get("resource_id", "")
+    # 规范 resource_id 为 smartedu:{id} 格式
+    if resource_id.startswith("smartedu-search:"):
+        clean_id = resource_id[len("smartedu-search:"):]
+        resource_id = f"smartedu:{clean_id}"
+    elif not resource_id.startswith("smartedu:"):
+        resource_id = f"smartedu:{resource_id}"
+
+    # 质量评估
+    fmt = c.get("format", "")
+    official = c.get("official", False)
+    metadata_confidence = c.get("metadata_confidence", 0.0)
+    score = 50
+    if official:
+        score += 30
+    if fmt in ("pdf", "mp4", "m3u8"):
+        score += 10
+    score += int(metadata_confidence * 10)
+    score = min(score, 100)
+
+    if score >= 85:
+        quality_level = "S"
+    elif score >= 70:
+        quality_level = "A"
+    elif score >= 50:
+        quality_level = "B"
+    else:
+        quality_level = "C"
+
+    # 下载可行性
+    requires_auth = c.get("requires_auth", False)
+    downloadable = c.get("downloadable", False)
+    if downloadable and not requires_auth:
+        download_feasibility = "可下载"
+    elif downloadable and requires_auth:
+        download_feasibility = "需授权"
+    elif requires_auth:
+        download_feasibility = "需授权"
+    else:
+        download_feasibility = "未知"
+
+    # 类型映射
+    resource_type = c.get("resource_type", "")
+    type_map = {"文档": "文档", "课件": "课件", "视频": "视频", "音频": "音频", "图片": "图片", "压缩包": "压缩包", "课程": "课程", "精品课": "课程", "国家精品课": "课程"}
+    result_type = type_map.get(resource_type, resource_type or "文档")
+
+    # 描述
+    parts = []
+    for key in ("version", "grade", "volume", "subject"):
+        val = c.get(key)
+        if val:
+            parts.append(str(val))
+    if c.get("provider"):
+        parts.append(str(c["provider"]))
+    description = " | ".join(parts) if parts else c.get("description", "")
+
+    return {
+        "resource_id": resource_id,
+        "title": c.get("title", ""),
+        "type": result_type,
+        "platform": "smartedu",
+        "source_url": c.get("source_url", ""),
+        "source_name": "国家中小学智慧教育平台",
+        "quality_level": quality_level,
+        "platform_quality_score": score,
+        "download_feasibility": download_feasibility,
+        "description": description,
+    }
+
+
 def run_search_resources(args: argparse.Namespace) -> int:
     filters = load_task_filters(args.task_json)
     extra_headers = parse_extra_headers(args.header)
@@ -1097,28 +1169,23 @@ def run_search_resources(args: argparse.Namespace) -> int:
                 candidates.append(annotate_candidate_detail(fallback, detail_summary))
     else:
         candidates = [search_item_to_candidate(item, query, filters) for item in items]
+    # 标准化为 platform-search-contract 格式
+    results = [_candidate_to_result(c) for c in candidates]
     result = {
-        "candidate_schema": "learning-resource-candidate/v1",
-        "source_skill": "smartedu",
+        "platform": "smartedu",
         "query": query,
-        "filters": filters,
         "searched_at": datetime.now(timezone.utc).isoformat(),
-        "candidates": candidates,
-        "model_context": search_model_context(items[:20], candidates, query, filters),
+        "results": results,
         "summary": {
             "search_items_seen": len(items),
-            "candidates": len(candidates),
+            "total_count": len(results),
             "fetch_details": bool(args.fetch_details),
             "details_fetched": details_fetched,
-            "detail_items_seen": detail_items_seen,
-            "detail_items_skipped": detail_items_skipped,
             "detail_failures": len(detail_failures),
             "online": not bool(args.search_response_json),
             "endpoint": args.search_url or SEARCH_URLS[0],
             "auth_context": has_runtime_auth_context(access_token, args.cookie, extra_headers, args),
-            "browser_state_context": bool(args.browser_state),
             "deep_search": deep_stats,
-            "note": "已开启详情追踪时，候选优先使用详情文件项；未开启或详情失败时，搜索候选仅适合展示和继续展开，下载前应解析真实文件项。",
         },
     }
     if detail_failures:

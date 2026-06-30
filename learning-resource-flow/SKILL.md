@@ -1,16 +1,14 @@
 ---
 name: learning-resource-flow
 description: 儿童学习资源获取与管理的总调度入口。接收用户自然语言需求，按顺序调度 intent、search、platforms、selector、downloader、library-manager 六个阶段，完成从需求理解到归档入库的完整工作流。
+agent_created: true
 ---
 
 # learning-resource-flow · 总调度入口
 
-## 概述
+**职责**：创建会话、初始化 manifest.json、按顺序切换到各阶段 skill 执行、读取各阶段 `_summary` 做调度决策、在关键节点向用户展示并等待确认。
 
-本 Skill 是儿童学习资源 Skill 套件的**唯一总入口**，负责协调整个资源获取工作流：
-从用户提出需求开始，经过需求拆解、搜索调度、平台搜索执行、质量筛选与用户选择、分级下载获取，最终归档到本地资料库。
-
-本 Skill 不直接执行搜索或下载，而是调度 6 个 Skill 协同完成任务。
+不直接执行搜索或下载，而是协调 6 个 skill 协同完成任务。
 
 ---
 
@@ -25,21 +23,22 @@ description: 儿童学习资源获取与管理的总调度入口。接收用户�
 
 ---
 
-## 数据流转规则
+## 会话与文件机制
 
-> 各阶段输出通过 JSON 文件保存到工作目录，不堆积在上下文中。
-
-### 1. 创建会话
+### 创建会话
 
 收到新需求时：
 - 生成 session_id：`{日期}-{时间}-{主题英文缩写}`，如 `20260626-1441-math-grade3`
 - 创建目录：`.learning-resource-work/sessions/{session_id}/`
 - 创建子目录：`downloads/`
-- 写入 `manifest.json`：
+- 写入 `manifest.json`（含完整路径信息，各 skill 自行读取）
+
+### manifest.json 结构
 
 ```json
 {
   "session_id": "20260626-1441-math-grade3",
+  "session_dir": ".learning-resource-work/sessions/20260626-1441-math-grade3",
   "user_request": "帮我找三年级数学练习题",
   "status": "in_progress",
   "current_stage": 1,
@@ -54,26 +53,35 @@ description: 儿童学习资源获取与管理的总调度入口。接收用户�
 }
 ```
 
-### 2. 调度每个阶段
+**关键字段说明**：
+- `session_dir`：会话目录的完整路径。创建会话后写入，各 skill 自行读取获取路径
+- `user_request`：用户原始需求文本。intent 阶段从此字段获取输入（不依赖对话上下文）
+- `stages.stage{N}.output`：各阶段的输出文件名。skill 自行读取获取自己的输出文件名和上游的输入文件名
+- `stages.stage{N}.status`：各阶段执行状态。各 skill 完成后自行更新为 `completed`
 
-对阶段 1→2→3→4→5→6 依次执行：
-- 更新 manifest.json：当前阶段标记为 `in_progress`
-- 调用对应 Skill，传递三个参数：会话目录路径、上游文件名、输出文件名
-- Skill 返回后：只读输出文件的 `_summary`，不读完整 data
-- 更新 manifest.json：当前阶段标记为 `completed`，回填 summary
-- 根据 summary 决定下一步
+### 数据流转规则
 
-### 3. 上下文管理
+各阶段 skill 从 manifest.json 自行获取路径和文件名信息，不依赖上下文传递：
 
-上下文中只保留 session_id、当前阶段、各阶段 summary。需要展示给用户时（如候选列表），从文件读取 data 部分后渲染。
+1. **flow 创建会话** → 写入 manifest.json（含 session_dir、user_request、各阶段 output 文件名）
+2. **切换到阶段 skill 执行** → session_dir 路径保持在上下文中（唯一需要上下文传递的信息）
+3. **skill 自行读 manifest** → 获取自己的输出文件名、上游输出文件名
+4. **skill 写入输出文件** → 业务数据落磁盘（`_meta` / `_summary` / `data` 三层结构）
+5. **skill 自行更新 manifest** → 将本阶段 status 改为 `completed`
+6. **flow 读输出文件 `_summary`** → 获取摘要做调度决策（不读 data）
+7. **flow 向用户展示** → 需要展示详情时从文件读 data 渲染
 
-### 4. 需求类型判断
+### 上下文管理
+
+上下文中只保留 session_dir 路径和各阶段 `_summary` 摘要。业务数据（需求/查询/搜索结果/选择/下载/归档）全部走文件，不堆积在上下文中。
+
+### 需求类型判断
 
 | 用户说的 | 处理方式 |
 |---------|---------|
 | 新的搜索/下载主题 | 创建新会话，从阶段一开始 |
-| "刚才那个""加选几个" | 复用当前 session_id，从指定阶段继续 |
-| "我之前存的""上次下载的" | 调用 library-manager 查资料库（不碰 sessions/） |
+| "刚才那个""加选几个" | 复用当前 session，从指定阶段继续 |
+| "我之前存的""上次下载的" | 切换到 library-manager 查资料库（不碰 sessions/） |
 | "继续上次没下完的" | 列出 sessions/ 目录让用户选，从中断处继续 |
 
 > 搜索结果是时效性数据，每次新需求都重新搜索。
@@ -82,55 +90,68 @@ description: 儿童学习资源获取与管理的总调度入口。接收用户�
 
 ## 协作的 Skill 清单
 
-| Skill | 所在层 | 职责 | 调用阶段 |
+| Skill | 所在层 | 职责 | 执行阶段 |
 |-------|-------|------|---------|
-| `resource-intent` | 业务能力层 | 需求理解与查询生成 | 阶段一 |
-| `resource-search` | 业务能力层 | 搜索策略制定（路由+任务分配） | 阶段二 |
+| `resource-intent` | 业务能力层 | 需求理解与槽位抽取 | 阶段一 |
+| `resource-search` | 业务能力层 | 搜索策略制定（查询生成+平台路由+任务分配） | 阶段二 |
 | `resource-platforms` | 平台执行层 | 搜索执行（调度平台脚本+跨平台去重） | 阶段三 |
 | `resource-selector` | 业务能力层 | 质量评估+过滤精选+候选展示+用户选择 | 阶段四 |
 | `resource-downloader` | 业务能力层 | 下载调度（分发+重试+降级） | 阶段五 |
 | `library-manager` | 业务能力层 | 资源归档、索引、管理 | 阶段六 |
 
-> **说明**：资料库检索不作为标准流程的必经步骤，用户需要时可主动调用 library-manager 查询。
+> 资料库检索不作为标准流程的必经步骤，用户需要时可主动切换到 library-manager 查询。
 
 ---
 
 ## 阶段调度
 
-> flow 只负责"调谁、传什么参数、读什么 summary"。
+> flow 的职责：更新 manifest 当前阶段为 in_progress → 切换到 skill 执行 → 读 `_summary` → 向用户展示并等待确认 → 进入下一阶段。
+> 各 skill 的职责：读 manifest 获取路径信息 → 读上游 data → 执行业务逻辑 → 写输出文件 → 更新 manifest 自身状态为 completed。
 
 ### 阶段一：需求理解
-- 调用 `resource-intent`，传 `{session_dir}` + 无上游 → 输出 `stage1_intent.json`
-- 读 `_summary`：core_topic、query_count、target_age、search_mode、assumptions
-- 向用户展示任务确认（主题/年龄/目标/资源类型/搜索模式/假设说明），确认后进阶段二
+
+1. 更新 manifest：`current_stage = 1`，`stages.stage1.status = "in_progress"`
+2. 切换到 `resource-intent` 执行（intent 读 manifest 获取 user_request 和 output 文件名）
+3. 读 `stage1_intent.json` 的 `_summary`：core_topic、target_age、search_mode
+4. 向用户展示任务确认（主题/年龄/资源类型/搜索模式/假设说明），确认后进阶段二
 
 ### 阶段二：搜索策略
-- 调用 `resource-search`，传 `{session_dir}` + `stage1_intent.json` → 输出 `stage2_search_plan.json`
-- 读 `_summary`：platform_count、platforms、query_count、expected_results
-- 向用户展示搜索计划概要，确认后进阶段三
+
+1. 更新 manifest：`current_stage = 2`，`stages.stage2.status = "in_progress"`
+2. 切换到 `resource-search` 执行（search 读 manifest 获取上游 output 和自身 output 文件名）
+3. 读 `stage2_search_plan.json` 的 `_summary`：platform_count、platforms、query_count、expected_results
+4. 向用户展示搜索计划概要，确认后进阶段三
 
 ### 阶段三：搜索执行
-- 调用 `resource-platforms`，传 `{session_dir}` + `stage2_search_plan.json` → 输出 `stage3_candidates.json`
-- 读 `_summary`：total_count（去重后总数）、raw_count（原始召回数）、platforms、has_results
-- has_results = false 或 total_count = 0 时主动询问用户是否放宽条件/换关键词/开穷尽模式
-- 有结果则进阶段四
+
+1. 更新 manifest：`current_stage = 3`，`stages.stage3.status = "in_progress"`
+2. 切换到 `resource-platforms` 执行（platforms 读 manifest 获取上游 output 和自身 output 文件名）
+3. 读 `stage3_candidates.json` 的 `_summary`：total_count、raw_count、platforms、has_results
+4. has_results = false 或 total_count = 0 时主动询问用户是否放宽条件/换关键词/开穷尽模式
+5. 有结果则进阶段四
 
 ### 阶段四：质量筛选与用户选择
-- 调用 `resource-selector`，传 `{session_dir}` + `stage3_candidates.json` → 输出 `stage4_select.json`
-- 读 `_summary`：total_candidates、filtered_count、selected_count、selection_mode
-- 用户未选任何资源则结束；选了则进阶段五
+
+1. 更新 manifest：`current_stage = 4`，`stages.stage4.status = "in_progress"`
+2. 切换到 `resource-selector` 执行（selector 读 manifest 获取上游 output 和自身 output 文件名）
+3. 读 `stage4_select.json` 的 `_summary`：total_candidates、filtered_count、selected_count、selection_mode
+4. 用户未选任何资源则结束；选了则进阶段五
 
 ### 阶段五：下载获取
-- 调用 `resource-downloader`，传 `{session_dir}` + `stage4_select.json` → 输出 `stage5_download.json`
-- 读 `_summary`：success_count、degraded_count、failed_count
-- 全部失败时告知用户原因并提供降级内容，询问是否换资源
-- 有成功/降级结果则进阶段六
+
+1. 更新 manifest：`current_stage = 5`，`stages.stage5.status = "in_progress"`
+2. 切换到 `resource-downloader` 执行（downloader 读 manifest 获取上游 output 和自身 output 文件名）
+3. 读 `stage5_download.json` 的 `_summary`：success_count、degraded_count、failed_count
+4. 全部失败时告知用户原因并提供降级内容，询问是否换资源
+5. 有成功/降级结果则进阶段六
 
 ### 阶段六：归档入库
-- 调用 `library-manager`，传 `{session_dir}` + `stage5_download.json` → 输出 `stage6_archive.json`
-- 读 `_summary`：archived_count、skipped_count、dedup_stats
-- 向用户展示最终汇总：成功获取列表 + 降级列表 + 失败列表 + 归档位置
-- 更新 manifest.json 状态为 `completed`
+
+1. 更新 manifest：`current_stage = 6`，`stages.stage6.status = "in_progress"`
+2. 切换到 `library-manager` 执行（library-manager 读 manifest 获取上游 output 和自身 output 文件名）
+3. 读 `stage6_archive.json` 的 `_summary`：archived_count、skipped_count、dedup_stats
+4. 向用户展示最终汇总：成功获取列表 + 降级列表 + 失败列表 + 归档位置
+5. 更新 manifest：`status = "completed"`
 
 ---
 

@@ -28,18 +28,18 @@ description: 搜索结果质量评估、过滤精选与用户选择 Skill。接�
 
 ## 执行前准备
 
-### 1. 确认参数
+### 1. 确认路径信息
 
-从 flow 传入的参数中获取：
-- `{session_dir}`：会话目录路径（绝对路径）
-- `{input_file}`：上游输入文件名（通常是 `stage3_candidates.json`）
-- `{output_file}`：本阶段输出文件名（通常是 `stage4_select.json`）
+读取 `{session_dir}/manifest.json`，获取本阶段执行所需信息：
+
+- `manifest.stages.stage3.output` → 上游输入文件名（通常是 `stage3_candidates.json`）
+- `manifest.stages.stage4.output` → 本阶段输出文件名（通常是 `stage4_select.json`）
 
 ### 2. 读取上游输入
 
-读取 `{session_dir}/{input_file}` 文件，提取其中的 `data` 部分。
+读取 `{session_dir}/{上游输入文件}` 的 `data` 部分。
 
-> 💡 只需要读 `data`，`_meta` 和 `_summary` 可以忽略（那是给 flow 用的）
+> 只需要读 `data`，`_meta` 和 `_summary` 可以忽略（那是给 flow 用的）
 
 **需要读取的字段**（从 data 中）：
 - `resources`：去重后的资源列表（数组，✅必选）
@@ -285,7 +285,7 @@ description: 搜索结果质量评估、过滤精选与用户选择 Skill。接�
 
 ### 第五步：写入输出文件
 
-用户确认选择后，将选定结果写入 `{session_dir}/{output_file}`（通常是 `stage4_select.json`）。
+用户确认选择后，将选定结果写入 `{session_dir}/{manifest.stages.stage4.output}`（通常是 `stage4_select.json`）。
 
 ```json
 {
@@ -333,10 +333,13 @@ description: 搜索结果质量评估、过滤精选与用户选择 Skill。接�
 
 ## 完成后
 
-### 通知 flow
+### 1. 更新 manifest
 
-- 提示 flow 调用 `resource-downloader` 继续执行
-- 只返回 `_summary`，不在上下文中展开完整 data
+将 `manifest.json` 中 `stages.stage4.status` 更新为 `completed`。
+
+### 2. 返回摘要
+
+只返回 `_summary`，不在上下文中展开完整 data。
 
 ---
 

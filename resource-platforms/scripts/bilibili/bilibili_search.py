@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B站 API 直调模块 — 基于 bilibili-api-python 库，无需外部命令行工具。
+"""B站搜索脚本 — 基于 bilibili-api-python 库，无需外部命令行工具。
 
 依赖：pip install bilibili-api-python httpx pyyaml
 
@@ -11,10 +11,10 @@
   - 音频流地址获取
 
 用法：
-  python bili_api.py search "小学数学" --max 10 -o results.json
-  python bili_api.py video BV1xxx
-  python bili_api.py subtitle BV1xxx --format srt
-  python bili_api.py hot --max 5
+  python bilibili_search.py search "小学数学" --max 10 -o results.json
+  python bilibili_search.py video BV1xxx
+  python bilibili_search.py subtitle BV1xxx --format srt
+  python bilibili_search.py hot --max 5
 """
 
 from __future__ import annotations
@@ -97,46 +97,59 @@ async def search_videos(keyword: str, max_results: int = 10, page: int = 1) -> l
         play = item.get("play", 0) or 0
         dur = item.get("duration", 0) or 0
         candidates.append({
-            "source": "bilibili-video",
-            "source_name": "Bilibili (哔哩哔哩)",
-            "source_platform": "bilibili",
-            "source_url": f"https://www.bilibili.com/video/{bvid}",
-            "resource_id": bvid,
+            "resource_id": f"bilibili:{bvid}",
             "title": title,
+            "type": "视频",
+            "platform": "bilibili",
+            "source_url": f"https://www.bilibili.com/video/{bvid}",
+            "source_name": "B站",
+            "quality_level": "B",
+            "platform_quality_score": _estimate_quality(play, dur),
+            "download_feasibility": "中",
             "description": _strip_html(item.get("description", ""))[:300],
-            "resource_type": "视频",
-            "format": "mp4",
             "provider": item.get("author", ""),
-            "snippet": f"播放 {play} | 时长 {_format_duration(dur)}",
-            "downloadable": True,
-            "metadata_confidence": 0.85,
-            "raw": {
-                "bvid": bvid,
-                "aid": item.get("aid"),
-                "play": play,
-                "danmaku": item.get("video_review", 0),
-                "duration": dur,
-                "pubdate": item.get("pubdate"),
-                "tag": item.get("tag", ""),
-            },
+            "tags": [],
+            "view_count": play,
+            "duration": int(dur) if isinstance(dur, (int, str)) and str(dur).isdigit() else None,
+            "language": "中文",
         })
     return candidates
 
 
+def _estimate_quality(play: int, duration: int | str) -> int:
+    """根据播放量和时长粗评 quality_score（0-100）。"""
+    score = 60
+    try:
+        play = int(play)
+    except (TypeError, ValueError):
+        play = 0
+    if play >= 5000000:
+        score = 95
+    elif play >= 1000000:
+        score = 85
+    elif play >= 100000:
+        score = 75
+    elif play >= 10000:
+        score = 65
+    return score
+
+
 def output_candidates(candidates: list[dict[str, Any]], keyword: str, output_file: str | None = None) -> dict[str, Any]:
+    """输出符合 platform-search-contract 的搜索结果 JSON。"""
     data = {
-        "candidate_schema": "learning-resource-candidate/v1",
-        "source_skill": "bilibili-video",
-        "source_tool": "bilibili-api-python",
+        "platform": "bilibili",
         "query": keyword,
-        "searched_at": datetime.now().isoformat(),
-        "candidates": candidates,
+        "total_found": len(candidates),
+        "returned_count": len(candidates),
+        "search_method": "api",
+        "has_more": False,
+        "results": candidates,
     }
     if output_file:
         p = Path(output_file)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        log.info("候选列表已保存: %s", output_file)
+        log.info("搜索结果已保存: %s", output_file)
     return data
 
 
@@ -328,7 +341,8 @@ def main() -> None:
         results = asyncio.run(search_videos(args.keyword, args.max, args.page))
         log.info("找到 %d 个视频", len(results))
         for i, c in enumerate(results[:15], 1):
-            log.info("  %d. %s (%s)", i, c['title'][:55], c['snippet'])
+            play = c.get('view_count', 0)
+            log.info("  %d. %s (播放 %s)", i, c['title'][:55], play)
         output_candidates(results, args.keyword, args.output)
 
     elif args.command == "video":

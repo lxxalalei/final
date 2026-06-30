@@ -10,7 +10,7 @@
 
 ## 标准接口
 
-接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../schemas/platform-download-contract.md`（下载）。
+接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../../../resource-downloader/references/platform-download-contract.md`（下载）。
 
 ### search(intent) → candidates
 
@@ -61,7 +61,7 @@ python3 scripts/weibo/weibo_dl.py search "教育方法" --max 20 --cookie weibo_
 - requests / urllib
 - 微博 ajax API
 - Cookie（SUB cookie，通过 Cookie Bridge 获取）
-- `shared/utils.py` — safe_filename 等通用工具
+- `shared/logger.py` — 统一日志
 
 ## 质量自评维度
 

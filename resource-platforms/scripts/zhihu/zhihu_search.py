@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""知乎搜索脚本 — 基于知乎搜索 API 实现关键词搜索，输出标准 candidate JSON。
+"""知乎搜索脚本 — 调用知乎搜索 API，输出标准搜索结果 JSON。
 
-搜索策略（双路径）：
-  1. 优先用知乎搜索 API（需要 z_c0 Cookie / Authorization Bearer token）
-  2. 无认证信息时降级为通用 HTTP 页面抓取 + 解析，返回有限结果
+认证要求：d_c0（设备指纹）+ z_c0（登录态）同时传入。
+凭证查找优先级：
+  1. CLI 参数 --cookie
+  2. 环境变量 ZHIHU_COOKIE
+  3. 配置文件 config/credentials.json（随 skill 安装在用户本地）
 
-输出格式遵循 shared/schemas/platform-search-contract.md 的 candidate 规范：
-  resource_id / title / source_url / platform 为必填字段。
+输出格式遵循 platform-search-contract.md 的 results 规范。
 
 用法:
   python zhihu_search.py search "三年级数学学习方法" --max 20 -o candidates.json
-  python zhihu_search.py search "小学英语启蒙" --cookie "z_c0=xxxx" --max 20
-  python zhihu_search.py search "科普 为什么天空是蓝色的" --max 15
+  python zhihu_search.py search "小学英语启蒙" --cookie "d_c0值 z_c0值" --max 20
+  python zhihu_search.py set-cookie "d_c0值 z_c0值"  # 持久化到 config/credentials.json
 
 依赖:
-  - httpx（可选，有则用；无则降级 urllib）
-  - 无需浏览器
+  - 标准库 urllib，无需第三方包
 """
 
 from __future__ import annotations
@@ -25,10 +25,9 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
-from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -40,8 +39,10 @@ log = getLogger("zhihu")
 
 # ========== 配置 ==========
 SEARCH_API = "https://www.zhihu.com/api/v4/search_v3"
-SEARCH_PAGE_URL = "https://www.zhihu.com/search"
 ZHIHU_BASE = "https://www.zhihu.com"
+
+CONFIG_DIR = Path(__file__).resolve().parent / "config"
+CREDENTIALS_FILE = CONFIG_DIR / "credentials.json"
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -49,7 +50,7 @@ UA = (
     "Chrome/131.0.0.0 Safari/537.36"
 )
 
-# 搜索类型映射：知乎 search_type → 标准资源类型
+# 知乎 type → 标准资源类型
 TYPE_MAP = {
     "content": "文章",
     "article": "文章",
@@ -60,48 +61,184 @@ TYPE_MAP = {
 # ==========================
 
 
-def _get_auth_headers(cookie: str | None, token: str | None) -> dict[str, str]:
-    """构建带认证的请求头。"""
+# ═══════════════════════════════════════════════════════════
+#  凭证管理
+# ═══════════════════════════════════════════════════════════
+
+def load_cookie() -> str | None:
+    """从配置文件读取已保存的 cookie。
+
+    查找优先级：CLI 参数 > 环境变量 > 配置文件。
+    此函数只负责第 3 级（配置文件），前两级在调用方处理。
+    """
+    if CREDENTIALS_FILE.exists():
+        try:
+            data = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
+            cookie = data.get("cookie") or data.get("z_c0")
+            if cookie:
+                log.debug("从配置文件读取凭证")
+                return cookie
+        except (json.JSONDecodeError, OSError) as exc:
+            log.warning("凭证文件解析失败: %s", exc)
+    return None
+
+
+def save_cookie(cookie: str) -> None:
+    """持久化 cookie 到配置文件。
+
+    存储路径：scripts/zhihu/config/credentials.json
+    随 skill 安装在用户本地，后续自动读取。
+    """
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    data = {"cookie": cookie}
+    CREDENTIALS_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    log.info("凭证已保存到 %s", CREDENTIALS_FILE)
+
+
+def resolve_cookie(cli_cookie: str | None) -> str | None:
+    """按优先级解析 cookie：CLI 参数 > 环境变量 > 配置文件。"""
+    if cli_cookie:
+        return cli_cookie
+    env_cookie = os.environ.get("ZHIHU_COOKIE")
+    if env_cookie:
+        return env_cookie
+    return load_cookie()
+
+
+# ═══════════════════════════════════════════════════════════
+#  HTTP 请求头构建
+# ═══════════════════════════════════════════════════════════
+
+def _get_auth_headers(cookie: str | None, token: str | None, keyword: str = "") -> dict[str, str]:
+    """构建带认证的请求头。
+
+    知乎搜索 API 需要 d_c0（设备指纹）和 z_c0（登录态）同时存在。
+    """
     headers: dict[str, str] = {
         "User-Agent": UA,
         "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.zhihu.com/",
         "x-requested-with": "fetch",
     }
-    # 优先用显式传入的 token
+    # Referer 必须是 ASCII 安全的（urllib 的 putheader 不支持非 latin-1）
+    if keyword:
+        headers["Referer"] = f"{ZHIHU_BASE}/search?q={urllib.parse.quote(keyword)}"
+    else:
+        headers["Referer"] = f"{ZHIHU_BASE}/"
+
     if token:
         headers["Authorization"] = f"Bearer {token}"
     elif cookie:
-        # 从 cookie 中提取 z_c0 作为 Bearer token
-        m = re.search(r"z_c0=([^;]+)", cookie)
-        if m:
-            headers["Authorization"] = f"Bearer {m.group(1)}"
-    if cookie:
-        headers["Cookie"] = cookie
-    elif os.environ.get("ZHIHU_COOKIE"):
-        headers["Cookie"] = os.environ["ZHIHU_COOKIE"]
+        z_c0 = _extract_value(cookie, "z_c0")
+        if z_c0:
+            headers["Authorization"] = f"Bearer {z_c0}"
+    cookie_str = _build_cookie_str(cookie)
+    if cookie_str:
+        headers["Cookie"] = cookie_str
     return headers
 
 
-def search_via_api(
+def _extract_value(raw: str, key: str) -> str | None:
+    """从 cookie 字符串中提取指定 key 的值。
+
+    支持两种格式：
+      1. 完整 cookie: "{key}=xxx; other=yyy"
+      2. itsdangerous 序列化裸值: "2|1:0|...|4:{key}|92:实际值|..."
+    """
+    # 格式 1: key=value（取到分号或字符串末尾）
+    m = re.search(rf"{key}=([^;]+)", raw)
+    if m:
+        return m.group(1)
+    # 格式 2: 裸 itsdangerous 值
+    if f"|4:{key}|" in raw:
+        idx = raw.find(f"|4:{key}|")
+        if idx >= 0:
+            start = raw.rfind("2|1:0|", 0, idx)
+            if start >= 0:
+                remaining = raw[idx:]
+                m2 = re.search(r"\|([0-9a-f]{40,})$", remaining)
+                if m2:
+                    end = idx + m2.end()
+                    return raw[start:end]
+            return raw
+    return None
+
+
+def _build_cookie_str(raw: str | None) -> str:
+    """从输入构建 Cookie 头字符串。
+
+    支持的输入格式：
+      - 完整 cookie: "d_c0=xxx; z_c0=yyy" → 原样返回
+      - 两个裸值用空格分隔: "d_c0值 z_c0值" → 自动识别并包装
+      - 单个裸 itsdangerous z_c0 值 → 包装为 z_c0=值
+      - 单个裸 d_c0 值 → 包装为 d_c0=值
+    """
+    if not raw:
+        return ""
+    raw = raw.strip()
+    # 完整 cookie 格式：以已知 key= 开头
+    if re.match(r"^(d_c0|z_c0)\s*=", raw):
+        return raw
+    # 两个或多个裸值用空格/逗号分隔
+    parts = re.split(r"[\s,]+", raw)
+    if len(parts) >= 2:
+        cookies = []
+        for p in parts:
+            p = p.strip()
+            if not p:
+                continue
+            if "|4:z_c0|" in p or p.startswith("2|1:0|"):
+                cookies.append(f"z_c0={p}")
+            elif len(p) > 10:
+                cookies.append(f"d_c0={p}")
+        return "; ".join(cookies) if cookies else ""
+    # 单个裸值
+    if "|4:z_c0|" in raw or raw.startswith("2|1:0|"):
+        return f"z_c0={raw}"
+    if len(raw) > 10:
+        return f"d_c0={raw}"
+    return ""
+
+
+# ═══════════════════════════════════════════════════════════
+#  搜索
+# ═══════════════════════════════════════════════════════════
+
+# 错误码常量（输出到 stderr 供 adapter 层识别）
+ERR_NO_CREDENTIAL = "CREDENTIAL_MISSING"
+ERR_CREDENTIAL_EXPIRED = "CREDENTIAL_EXPIRED"
+
+
+def search(
     keyword: str,
     cookie: str | None = None,
     token: str | None = None,
     max_results: int = 20,
 ) -> list[dict[str, Any]]:
-    """通过知乎搜索 API 搜索。需要认证（z_c0 cookie 或 Bearer token）。"""
-    cookie = cookie or os.environ.get("ZHIHU_COOKIE")
-    token = token or os.environ.get("ZHIHU_TOKEN")
-    headers = _get_auth_headers(cookie, token)
+    """调用知乎搜索 API，返回标准结果列表。
 
-    if "Authorization" not in headers:
-        log.warning("缺少知乎认证信息（z_c0 cookie 或 token），无法调用搜索 API")
+    凭证查找优先级：cookie 参数 > ZHIHU_COOKIE 环境变量 > config/credentials.json。
+    无凭证时返回空列表并输出错误信号。
+    """
+    log.info("知乎搜索: '%s' (max=%d)", keyword, max_results)
+
+    cookie = resolve_cookie(cookie)
+    token = token or os.environ.get("ZHIHU_TOKEN")
+    headers = _get_auth_headers(cookie, token, keyword)
+
+    has_auth = "Authorization" in headers
+    has_cookie = "Cookie" in headers
+    if not has_auth and not has_cookie:
+        log.error("[%s] 缺少知乎认证信息，请通过 set-cookie 命令配置", ERR_NO_CREDENTIAL)
         return []
+    if not has_auth:
+        log.warning("无 z_c0 登录态，仅有 d_c0 设备指纹，API 可能拒绝")
 
     candidates: list[dict[str, Any]] = []
     offset = 0
     limit = min(max_results, 20)
-    search_type = "content"
 
     while len(candidates) < max_results:
         params = {
@@ -112,7 +249,7 @@ def search_via_api(
             "limit": str(limit),
             "show_all_topics": "0",
             "search_source": "Filter",
-            "type": search_type,
+            "type": "content",
         }
         url = f"{SEARCH_API}?{urllib.parse.urlencode(params)}"
         log.info("搜索 API 调用: offset=%d limit=%d", offset, limit)
@@ -125,6 +262,15 @@ def search_via_api(
                     break
                 raw = resp.read().decode("utf-8")
                 data = json.loads(raw)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                log.error(
+                    "[%s] 知乎认证已过期（HTTP %d），请重新获取 d_c0 和 z_c0 cookie",
+                    ERR_CREDENTIAL_EXPIRED, exc.code,
+                )
+            else:
+                log.error("搜索 API 请求失败: HTTP %d", exc.code)
+            break
         except Exception as exc:
             log.error("搜索 API 请求失败: %s", exc)
             break
@@ -142,33 +288,29 @@ def search_via_api(
                 if len(candidates) >= max_results:
                     break
 
-        # 分页
         paging = data.get("paging") or {}
         is_end = paging.get("is_end", True)
         if is_end:
             break
         offset += limit
 
-    log.info("搜索 API 返回 %d 条候选", len(candidates))
+    log.info("搜索 API 返回 %d 条结果", len(candidates))
     return candidates[:max_results]
 
 
 def _parse_search_item(obj: dict[str, Any], raw_item: dict[str, Any]) -> dict[str, Any] | None:
-    """解析单条搜索结果为标准 candidate。"""
+    """解析单条 API 结果为标准搜索结果。"""
     obj_type = str(obj.get("type") or raw_item.get("type") or "").lower()
     resource_id = str(obj.get("id") or "")
 
-    # 构建标题
     title = (
         obj.get("title")
         or raw_item.get("highlight", {}).get("title")
         or obj.get("name")
         or "无标题"
     )
-    # 清理 HTML 高亮标签
     title = re.sub(r"<[^>]+>", "", title).strip()
 
-    # 构建 URL
     source_url = ""
     if obj_type == "answer":
         qid = obj.get("question", {}).get("id") or ""
@@ -183,7 +325,6 @@ def _parse_search_item(obj: dict[str, Any], raw_item: dict[str, Any]) -> dict[st
     if not source_url or not title:
         return None
 
-    # 摘要
     snippet_raw = (
         raw_item.get("highlight", {}).get("content")
         or obj.get("excerpt")
@@ -196,333 +337,64 @@ def _parse_search_item(obj: dict[str, Any], raw_item: dict[str, Any]) -> dict[st
     author = obj.get("author", {}).get("name", "") if isinstance(obj.get("author"), dict) else ""
 
     return {
-        "resource_id": resource_id or source_url,
+        "resource_id": f"zhihu:{resource_id}" if resource_id else f"zhihu:{source_url}",
         "title": title,
+        "type": resource_type,
+        "platform": "zhihu",
         "source_url": source_url,
-        "source_platform": "zhihu",
-        "source": "zhihu-content",
         "source_name": "知乎",
-        "snippet": snippet,
-        "format": "md",
-        "resource_type": resource_type,
+        "quality_level": "B",
+        "platform_quality_score": 60,
+        "download_feasibility": "中",
+        "description": snippet,
         "provider": author,
-        "downloadable": True,
-        "requires_auth": False,
-        "metadata_confidence": 0.6,
-        "raw": {"type": obj_type, **{k: v for k, v in obj.items() if k != "content"}},
+        "tags": [],
+        "language": "中文",
     }
 
 
-# ─── 降级方案：页面抓取 ───────────────────────────────────────
-
-class _ZhihuSearchParser(HTMLParser):
-    """从知乎搜索结果页 HTML 中提取链接和标题（降级方案）。"""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.results: list[dict[str, str]] = []
-        self._in_card = False
-        self._current_title = ""
-        self._current_url = ""
-        self._capture_title = False
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attr_map = dict(attrs)
-        href = attr_map.get("href") or ""
-        cls = attr_map.get("class") or ""
-
-        # 知乎搜索结果页的卡片标题链接
-        if tag == "a" and ("Card" in cls or "SearchResult" in cls or "ContentItem" in cls):
-            self._in_card = True
-            self._capture_title = True
-            self._current_title = ""
-            self._current_url = href
-        elif tag == "a" and href and ("/question/" in href or "/p/" in href):
-            if not self._in_card:
-                self._in_card = True
-                self._capture_title = True
-                self._current_title = ""
-                self._current_url = href
-
-    def handle_data(self, data: str) -> None:
-        if self._capture_title:
-            self._current_title += data
-
-    def handle_endtag(self, tag: str) -> None:
-        if self._capture_title and tag == "a":
-            title = self._current_title.strip()
-            url = self._current_url
-            if title and url and len(title) > 4:
-                if url.startswith("/"):
-                    url = ZHIHU_BASE + url
-                self.results.append({"title": title, "url": url})
-            self._capture_title = False
-            self._in_card = False
-
-
-def search_via_html(
-    keyword: str,
-    cookie: str | None = None,
-    max_results: int = 20,
-) -> list[dict[str, Any]]:
-    """降级方案：抓取知乎搜索结果页面 HTML 并解析。
-
-    无 API 认证时使用。准确率较低，仅作为兜底。
-    """
-    cookie = cookie or os.environ.get("ZHIHU_COOKIE")
-    headers: dict[str, str] = {
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "zh-CN,zh;q=0.9",
-        "Referer": "https://www.zhihu.com/",
-    }
-    if cookie:
-        headers["Cookie"] = cookie
-
-    url = f"{SEARCH_PAGE_URL}?{urllib.parse.urlencode({'q': keyword, 'type': 'content'})}"
-    log.info("降级搜索: 抓取搜索页 %s", url)
-
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-    except Exception as exc:
-        log.error("页面抓取失败: %s", exc)
-        return []
-
-    parser = _ZhihuSearchParser()
-    try:
-        parser.feed(html)
-    except Exception:
-        pass
-
-    candidates: list[dict[str, Any]] = []
-    seen_urls: set[str] = set()
-    for item in parser.results[:max_results]:
-        url = item["url"].split("?")[0]  # 去掉查询参数
-        if url in seen_urls:
-            continue
-        seen_urls.add(url)
-        resource_id = url.rstrip("/").rsplit("/", 1)[-1]
-        candidates.append(
-            {
-                "resource_id": resource_id,
-                "title": item["title"],
-                "source_url": url,
-                "source_platform": "zhihu",
-                "source": "zhihu-content",
-                "source_name": "知乎",
-                "snippet": "",
-                "format": "md",
-                "resource_type": "问答" if "/question/" in url else "文章",
-                "provider": "",
-                "downloadable": True,
-                "requires_auth": False,
-                "metadata_confidence": 0.3,
-                "raw": {"search_method": "html_fallback"},
-            }
-        )
-    log.info("降级搜索返回 %d 条候选", len(candidates))
-    return candidates
-
-
-def search_via_websearch(keyword: str, max_results: int = 20) -> list[dict[str, Any]]:
-    """降级方案：通过通用搜索引擎搜索 site:zhihu.com。
-
-    这是最后的兜底路径——当 API 认证缺失、页面抓取被 403 时，
-    通过通用搜索引擎间接发现知乎内容。
-
-    策略：先尝试 Bing（反爬宽松），无结果则尝试百度。
-    """
-    log.info("WebSearch 兜底: '%s'", keyword)
-
-    # 尝试 Bing
-    candidates = _search_via_bing(keyword, max_results)
-    if candidates:
-        return candidates
-
-    # Bing 无结果，尝试百度
-    log.info("Bing 无知乎结果，尝试百度...")
-    candidates = _search_via_baidu(keyword, max_results)
-    return candidates
-
-
-def _search_via_bing(keyword: str, max_results: int) -> list[dict[str, Any]]:
-    """通过 Bing 搜索 site:zhihu.com。"""
-    query = f"{keyword} site:zhihu.com"
-    url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}&count={min(max_results * 2, 30)}"
-    headers = {
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "zh-CN,zh;q=0.9",
-    }
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-    except Exception as exc:
-        log.error("Bing 搜索失败: %s", exc)
-        return []
-
-    return _extract_candidates_from_search_html(html, max_results)
-
-
-def _search_via_baidu(keyword: str, max_results: int) -> list[dict[str, Any]]:
-    """通过百度搜索 site:zhihu.com。"""
-    query = f"{keyword} site:zhihu.com"
-    url = f"https://www.baidu.com/s?wd={urllib.parse.quote(query)}&rn={min(max_results * 2, 30)}"
-    headers = {
-        "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "zh-CN,zh;q=0.9",
-    }
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-    except Exception as exc:
-        log.error("百度搜索失败: %s", exc)
-        return []
-
-    return _extract_candidates_from_search_html(html, max_results)
-
-
-def _extract_candidates_from_search_html(html: str, max_results: int) -> list[dict[str, Any]]:
-    """从搜索引擎结果 HTML 中提取知乎链接并构建 candidate 列表。
-
-    支持多种搜索引擎结果页的 HTML 结构（Bing/Baidu 等）。
-    """
-    # 搜索结果块（Bing 用 b_algo，百度用 result c-container）
-    block_pattern = re.compile(
-        r'<(?:li|div)[^>]*class="[^"]*(?:b_algo|result c-container)[^"]*"[^>]*>(.*?)</(?:li|div)>',
-        re.IGNORECASE | re.DOTALL,
-    )
-    link_pattern = re.compile(
-        r'href="(https?://(?:www\.|zhuanlan\.)?zhihu\.com/(?:question|p)/[^"&?]+)"',
-        re.IGNORECASE,
-    )
-
-    seen_urls: set[str] = set()
-    candidates: list[dict[str, Any]] = []
-
-    for block_match in block_pattern.finditer(html):
-        block = block_match.group(1)
-        link_match = link_pattern.search(block)
-        if not link_match:
-            continue
-
-        raw_url = link_match.group(1)
-        clean_url = raw_url.split("&")[0].rstrip("/")
-        if clean_url in seen_urls:
-            continue
-        seen_urls.add(clean_url)
-
-        # 从整个 block 中提取标题文本
-        block_text = re.sub(r"<[^>]+>", "\n", block)
-        block_text = block_text.replace("&ensp;", " ").replace("&#0183;", "·").replace("&amp;", "&").replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">")
-        lines = [l.strip() for l in block_text.split("\n") if l.strip() and len(l.strip()) > 4]
-
-        # 标题：合并前几行（遇到日期模式停止）
-        title_parts: list[str] = []
-        for line in lines:
-            if "zhihu.com" in line:
-                continue
-            if re.match(r"^\d{4}年\d{1,2}月", line):
-                break
-            title_parts.append(line)
-            if len("".join(title_parts)) >= 8:
-                break
-        title = "".join(title_parts)[:120]
-
-        # 提取摘要
-        snippet = ""
-        for line in lines[len(title_parts):]:
-            if len(line) > 15 and "zhihu.com" not in line:
-                snippet = line[:200]
-                break
-
-        resource_id = clean_url.rstrip("/").rsplit("/", 1)[-1]
-        is_answer = "/question/" in clean_url
-
-        candidates.append({
-            "resource_id": resource_id,
-            "title": title or f"知乎{'问答' if is_answer else '文章'} {resource_id}",
-            "source_url": clean_url,
-            "source_platform": "zhihu",
-            "source": "zhihu-content",
-            "source_name": "知乎",
-            "snippet": snippet,
-            "format": "md",
-            "resource_type": "问答" if is_answer else "文章",
-            "provider": "",
-            "downloadable": True,
-            "requires_auth": False,
-            "metadata_confidence": 0.4,
-            "raw": {"search_method": "search_engine_fallback"},
-        })
-        if len(candidates) >= max_results:
-            break
-
-    log.info("搜索引擎兜底返回 %d 条知乎候选", len(candidates))
-    return candidates
-
-
-def search(
-    keyword: str,
-    cookie: str | None = None,
-    token: str | None = None,
-    max_results: int = 20,
-) -> list[dict[str, Any]]:
-    """主搜索入口：三级降级 — API → 页面抓取 → 搜索引擎兜底。"""
-    log.info("知乎搜索: '%s' (max=%d)", keyword, max_results)
-
-    # 路径 1：API 搜索（需认证）
-    candidates = search_via_api(keyword, cookie=cookie, token=token, max_results=max_results)
-    if candidates:
-        return candidates
-
-    # 路径 2：降级页面抓取
-    log.info("API 无结果或无认证，降级页面抓取...")
-    candidates = search_via_html(keyword, cookie=cookie, max_results=max_results)
-    if candidates:
-        return candidates
-
-    # 路径 3：搜索引擎兜底（Bing site:zhihu.com）
-    log.info("页面抓取失败，降级搜索引擎兜底...")
-    candidates = search_via_websearch(keyword, max_results=max_results)
-    return candidates
-
-
-def output_candidates(results: list[dict[str, Any]], keyword: str, output_file: str | None = None) -> dict[str, Any]:
-    """格式化为标准 candidate JSON 输出。"""
+def output_results(results: list[dict[str, Any]], keyword: str, output_file: str | None = None) -> dict[str, Any]:
+    """输出符合 platform-search-contract 的搜索结果 JSON。"""
     data = {
-        "candidate_schema": "learning-resource-candidate/v1",
-        "source_skill": "zhihu-content",
+        "platform": "zhihu",
         "query": keyword,
-        "searched_at": datetime.now().isoformat(),
-        "candidates": results,
+        "total_found": len(results),
+        "returned_count": len(results),
+        "search_method": "api",
+        "has_more": False,
+        "results": results,
     }
     output = json.dumps(data, ensure_ascii=False, indent=2)
     if output_file:
         Path(output_file).write_text(output + "\n", encoding="utf-8")
-        log.info("候选列表已保存: %s", output_file)
+        log.info("搜索结果已保存: %s", output_file)
     else:
         print(output)
     return data
 
 
-# ─── CLI ───────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
+#  CLI
+# ═══════════════════════════════════════════════════════════
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="知乎搜索脚本")
     sub = parser.add_subparsers(dest="cmd")
 
+    # search 子命令
     s = sub.add_parser("search", help="搜索知乎问答/文章")
     s.add_argument("keyword", help="搜索关键词")
-    s.add_argument("--cookie", default=None, help="知乎 Cookie（包含 z_c0）")
-    s.add_argument("--token", default=None, help="知乎 Bearer token（替代 cookie 中的 z_c0）")
+    s.add_argument("--cookie", default=None, help="知乎 Cookie（d_c0 和 z_c0，会覆盖配置文件）")
+    s.add_argument("--token", default=None, help="知乎 Bearer token")
     s.add_argument("--max", type=int, default=20, help="最大返回数（默认 20）")
     s.add_argument("-o", "--output", default=None, help="输出 JSON 文件路径")
+
+    # set-cookie 子命令：持久化 cookie 到本地配置文件
+    sc = sub.add_parser("set-cookie", help="保存知乎 Cookie 到本地配置文件")
+    sc.add_argument("cookie", help="知乎 Cookie（d_c0 和 z_c0，空格或分号分隔）")
+
+    # check-cookie 子命令：检查已保存的 cookie
+    sub.add_parser("check-cookie", help="检查本地已保存的凭证")
 
     args = parser.parse_args()
 
@@ -533,8 +405,33 @@ def main() -> int:
             token=args.token,
             max_results=args.max,
         )
-        output_candidates(results, args.keyword, args.output)
+        output_results(results, args.keyword, args.output)
         return 0 if results else 1
+
+    elif args.cmd == "set-cookie":
+        save_cookie(args.cookie)
+        print(f"凭证已保存到 {CREDENTIALS_FILE}")
+        return 0
+
+    elif args.cmd == "check-cookie":
+        cookie = load_cookie()
+        if cookie:
+            # 显示脱敏摘要
+            if len(cookie) > 20:
+                masked = cookie[:8] + "..." + cookie[-8:]
+            else:
+                masked = "***"
+            print(f"已保存凭证: {masked}")
+            # 检查是否包含 z_c0
+            has_z = bool(_extract_value(cookie, "z_c0"))
+            has_d = "d_c0=" in _build_cookie_str(cookie) or bool(_extract_value(cookie, "d_c0"))
+            print(f"  z_c0 (登录态): {'有' if has_z else '无'}")
+            print(f"  d_c0 (设备指纹): {'有' if has_d else '无'}")
+        else:
+            print("未找到已保存的凭证")
+            print(f"凭证文件位置: {CREDENTIALS_FILE}")
+            print("使用以下命令保存: python zhihu_search.py set-cookie \"d_c0值 z_c0值\"")
+        return 0
 
     parser.print_help()
     return 1

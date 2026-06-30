@@ -12,18 +12,18 @@
 
 | 引擎 | 脚本 | 擅长 | 依赖 |
 |------|------|------|------|
-| **bilibili-api** (推荐) | `bili_api.py` | 搜索、视频信息、字幕、排行榜、UP主列表 | `pip install bilibili-api-python httpx` |
-| **CDP 下载器** | `bilibili_dl.py` | 视频文件下载（ffmpeg 合并 MP4） | CDP 浏览器(9222) / Playwright + ffmpeg |
+| **bilibili-api** (推荐) | `bilibili_search.py` | 搜索、视频信息、字幕、排行榜、UP主列表 | `pip install bilibili-api-python httpx` |
+| **CDP 下载器** | `bilibili_dl.py`（已迁移至 resource-downloader） | 视频文件下载（ffmpeg 合并 MP4） | CDP 浏览器(9222) / Playwright + ffmpeg |
 
 **选择策略**：
-- 搜索 → **bili_api.py**（无需浏览器，直接 API，速度快）
-- 视频下载 → **bilibili_dl.py**（CDP 方式更稳定）
-- 字幕 → **bili_api.py**
-- 无 CDP 环境时 → 全部用 **bili_api.py**
+- 搜索 → **bilibili_search.py**（无需浏览器，直接 API，速度快）
+- 视频下载 → **resource-downloader/scripts/bilibili/bilibili_dl.py**（CDP 方式更稳定）
+- 字幕 → **bilibili_search.py**
+- 无 CDP 环境时 → 搜索用 **bilibili_search.py**
 
 ## 标准接口
 
-接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../schemas/platform-download-contract.md`（下载）。
+接口契约详见 `../schemas/platform-search-contract.md`（搜索）和 `../../../resource-downloader/references/platform-download-contract.md`（下载）。
 
 ### search(intent) → candidates
 
@@ -32,7 +32,7 @@
 **无需浏览器，直接 API 调用。**
 
 ```bash
-python3 scripts/bilibili/bili_api.py search \
+python3 scripts/bilibili/bilibili_search.py search \
   "小学数学" --max 10 -o results.json
 ```
 
@@ -40,50 +40,50 @@ python3 scripts/bilibili/bili_api.py search \
 
 #### 方法 B：CDP 浏览器搜索（WBI 签名）
 
-独立 headless 模式搜索返回空结果（B站 TLS 指纹检测），需通过 CDP 浏览器：
+独立 headless 模式搜索返回空结果（B站 TLS 指纹检测），需通过 CDP 浏览器（已迁移至 resource-downloader）：
 
 ```bash
-python3 scripts/bilibili/bilibili_dl.py search \
+python3 resource-downloader/scripts/bilibili/bilibili_dl.py search \
   "小学数学" --max-pages 2 -o results.json
 ```
 
 ### download(candidate) → result
 
-视频文件下载（需 CDP 浏览器或 Playwright + ffmpeg）：
+视频文件下载（需 CDP 浏览器或 Playwright + ffmpeg，脚本在 resource-downloader 中）：
 
 ```bash
 # 单个视频
-python3 scripts/bilibili/bilibili_dl.py download BV1xxx -o ./downloads/
+python3 resource-downloader/scripts/bilibili/bilibili_dl.py download BV1xxx -o ./downloads/
 
 # 批量下载
-python3 scripts/bilibili/bilibili_dl.py batch list.json -o ./downloads/
+python3 resource-downloader/scripts/bilibili/bilibili_dl.py batch list.json -o ./downloads/
 
 # UP主全部视频
-python3 scripts/bilibili/bilibili_user_dl.py <空间URL或UID> -o ./downloads/
+python3 resource-downloader/scripts/bilibili/bilibili_user_dl.py <空间URL或UID> -o ./downloads/
 ```
 
-## bili_api.py 能力清单
+## bilibili_search.py 能力清单
 
 ```bash
 # 搜索视频（无需登录）
-python3 scripts/bilibili/bili_api.py search "小学数学" --max 10
+python3 scripts/bilibili/bilibili_search.py search "小学数学" --max 10
 
 # 视频详情
-python3 scripts/bilibili/bili_api.py video BV1xxx
+python3 scripts/bilibili/bilibili_search.py video BV1xxx
 
 # 字幕获取（plain / srt 格式，部分视频需登录）
-python3 scripts/bilibili/bili_api.py subtitle BV1xxx --format srt -o sub.srt
+python3 scripts/bilibili/bilibili_search.py subtitle BV1xxx --format srt -o sub.srt
 
 # 全站排行榜
-python3 scripts/bilibili/bili_api.py rank --max 10
+python3 scripts/bilibili/bilibili_search.py rank --max 10
 
 # UP主视频列表
-python3 scripts/bilibili/bili_api.py user-videos 946974 --max 10
+python3 scripts/bilibili/bilibili_search.py user-videos 946974 --max 10
 ```
 
 ## 全部可用命令
 
-### bili_api.py（bilibili-api-python 直调）
+### bilibili_search.py（bilibili-api-python 直调）
 
 | 命令 | 用途 | 需登录 |
 |------|------|--------|
@@ -93,7 +93,7 @@ python3 scripts/bilibili/bili_api.py user-videos 946974 --max 10
 | `rank` | 全站排行榜 | 否 |
 | `user-videos <uid>` | UP主视频列表 | 否 |
 
-### bilibili_dl.py（CDP 下载器）
+### bilibili_dl.py（CDP 下载器，已迁移至 resource-downloader）
 
 | 命令 | 用途 | 需登录 |
 |------|------|--------|
@@ -144,7 +144,7 @@ python3 scripts/bilibili/bili_api.py user-videos 946974 --max 10
 
 ## 关键原则
 
-1. **搜索优先用 bili_api.py** — 无需浏览器，直接 API，速度快
+1. **搜索优先用 bilibili_search.py** — 无需浏览器，直接 API，速度快
 2. **视频下载用 CDP 方式** — ffmpeg 合并质量更可控
 3. **脚本不可用时标记跳过** — 不阻塞其他平台
 

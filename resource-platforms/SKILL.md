@@ -1,108 +1,73 @@
 ---
 name: resource-platforms
-description: 搜索执行层。接收搜索任务清单，调度各平台脚本执行搜索，汇总原始结果并进行跨平台去重，输出标准化后的去重结果列表。不负责质量评估和过滤精选，这些由下游 selector 负责。
+description: 搜索执行 Skill（阶段三）。当搜索策略阶段输出搜索任务清单后激活，按优先级调度各平台搜索脚本执行搜索，汇总原始结果并进行跨平台去重，输出标准化后的去重结果列表供下游质量筛选阶段使用。
+agent_created: true
 ---
 
 # resource-platforms · 搜索执行
 
-## 我是谁
-
-**上游**：resource-search（从搜索策略 Skill 接收搜索任务清单）
-**下游**：resource-selector（把去重后的原始结果列表传给选择器）
+**上游**：resource-search（读取 `stage2_search_plan.json` 的 data）
+**下游**：resource-selector（写入 `stage3_candidates.json`）
 **阶段编号**：stage 3
 
-核心定位：**搜索的执行者**——拿到搜索任务后，实际去各个平台搜，把结果收回来，去重、标准化，然后原样输出。不做质量评估、不做过滤精选，把判断权交给下游 selector。
+按搜索任务清单调度各平台搜索脚本，汇总原始结果、跨平台去重、标准化为统一格式后输出。不做质量评估、过滤精选和排序——这些由下游 selector 负责。
 
 ---
 
 ## 执行前准备
 
-### 1. 确认参数
+读取 `{session_dir}/manifest.json`，获取本阶段执行所需信息：
 
-从 flow 传入的参数中获取：
-- `{session_dir}`：会话目录路径（绝对路径）
-- `{input_file}`：上游输入文件名（通常是 `stage2_search_plan.json`）
-- `{output_file}`：本阶段输出文件名（通常是 `stage3_candidates.json`）
+- `manifest.stages.stage2.output` → 上游输入文件名（通常是 `stage2_search_plan.json`）
+- `manifest.stages.stage3.output` → 本阶段输出文件名（通常是 `stage3_candidates.json`）
 
-### 2. 读取上游输入
+读取 `{session_dir}/{上游输入文件}` 的 `data` 部分，提取以下字段：
 
-读取 `{session_dir}/{input_file}` 文件，提取其中的 `data` 部分。
-
-> 💡 只需要读 `data`，`_meta` 和 `_summary` 可以忽略（那是给 flow 用的）
-
-**需要读取的字段**（从 data 中）：
-- `search_tasks`：各平台搜索任务列表（数组，✅必选）
-  - 每个任务包含：
-    - `platform_id`：平台标识（如 bilibili）
-    - `platform_name`：平台名称
-    - `priority`：优先级（P0 / P1 / P2）
-    - `queries`：该平台的查询列表
-    - `target_count`：预期召回数量
-    - `search_params`：其他搜索参数（可选）
-- `core_topic`：核心主题（字符串，✅必选）
-  - 透传给下游，供 selector 做相关性判断
-- `target_age`：目标年龄范围（字符串，✅必选）
-  - 透传给下游，供 selector 做适龄匹配度评分
-- `search_mode`：搜索模式（字符串，✅必选）
-  - standard / exhaustive
+- `search_tasks`：各平台搜索任务列表（数组，必选）
+  - 每个任务包含：`platform_id`、`platform_name`、`priority`（P0/P1/P2）、`queries`（含 text/tier/format_hint）、`target_count`、`search_params`（可选）
+- `core_topic`：核心主题（必选，透传下游）
+- `target_age`：目标年龄范围（必选，透传下游）
+- `search_mode`：搜索模式 standard / exhaustive（必选）
 
 ---
 
 ## 执行步骤
 
-### 第一步：确认可用平台与脚本路径
+### 第一步：确认可用平台
 
-根据搜索任务中的平台列表，确认每个平台的搜索脚本路径和调用方式。
+根据搜索任务中的 `platform_id` 列表，确认每个平台的搜索脚本是否存在且可用。
 
-**平台脚本查找规则**：
-- 脚本位于 `./scripts/{platform_id}/` 目录下
-- 搜索脚本命名：`{platform_id}_search.py`
-- 每个平台有一个 `adapter.py` 作为统一接口
+**脚本查找规则**：
+- 搜索脚本位于 `./scripts/{platform_id}/` 目录下
+- 搜索脚本命名：`{platform_id}_search.py` 或 `adapter.py`（统一接口）
+- generic 平台走通用搜索引擎，无专属脚本
 
-**可用平台检查**：
-- 检查平台脚本是否存在
-- 检查平台状态是否可用
-- 不可用的平台跳过，记录到日志中
+**不可用平台处理**：跳过该平台，记录平台 ID 和跳过原因到 `skipped_platforms`，不影响其他平台执行。
 
-> 📖 平台能力矩阵见：本文件下方「平台清单」表格
-> 📖 各平台详细文档见：`./references/platforms/{platform_id}.md`
+**凭证管理**：部分平台（如知乎）需要登录态 Cookie 才能调用搜索 API。凭证查找优先级：CLI 参数 > 环境变量 > `scripts/{platform}/config/credentials.json`（随 skill 安装在用户本地）。用户首次使用时通过 `python scripts/{platform}/{platform}_search.py set-cookie "cookie值"` 写入配置文件，后续自动读取。当 API 返回 401/403 时，脚本输出 `CREDENTIAL_EXPIRED` 错误码，提示用户提供新 cookie。
 
-**本步产出**：
-- `available_tasks`：可用的搜索任务（过滤掉不可用的平台）
-- `skipped_platforms`：跳过的平台及原因
+> 📖 各平台的搜索能力、认证要求和反爬等级见 `./references/platforms/{platform_id}.md`
 
 ---
 
-### 第二步：按优先级调度各平台搜索
+### 第二步：按优先级调度搜索
 
-按平台优先级从高到低，依次执行搜索。
-
-**调度方式**：
-- 调用各平台的搜索脚本
-- 传入参数：查询关键词、数量限制、其他搜索参数
-- 每个平台的搜索结果保存到临时文件
-
-**执行顺序**：
-1. **P0 平台**（第一梯队）：优先执行，分配更多查询
-2. **P1 平台**（第二梯队）：其次执行
-3. **P2 平台**（补充）：最后执行
+按平台优先级从高到低（P0 → P1 → P2 → generic），依次调度各平台搜索脚本。
 
 **每个平台的执行流程**：
-1. 读取该平台的查询列表
-2. 按查询优先级依次执行搜索
-3. 收集搜索结果
-4. 进行平台内初步去重
-5. 结果标准化（转为统一的资源元数据格式）
+1. 读取该平台的查询列表（queries 数组）
+2. 按查询优先级依次执行搜索（core → official → format → longtail）
+3. 收集搜索结果，进行平台内初步去重
+4. 将结果标准化为统一资源元数据格式
 
-> 💡 各平台的搜索技巧和注意事项，见对应平台的参考文档。
-> 执行时如果遇到问题（反爬、登录等），参考对应平台的文档处理。
+**错误容错**：某个平台或某个查询失败时记录错误，跳过继续，不影响整体流程。每个查询的执行结果（成功/失败/部分成功）记录到 `platform_stats`。
 
-**本步产出**：
-- `raw_results`：各平台原始搜索结果汇总（数组）
-  - 每个结果是一个资源对象，包含基本元数据
-  - 平台脚本返回时带 `platform_quality_score`（平台自评原始分，供下游参考）
-- `platform_stats`：各平台的搜索统计
-  - 每个平台执行了几个查询、召回了多少条结果
+**平台脚本返回的每个资源对象包含**：
+- 基本元数据：`resource_id`、`title`、`type`、`platform`、`source_url`、`source_name`
+- 质量信号：`platform_quality_score`（0-100 分，平台脚本自评的原始分，供 selector 参考）
+- 可选元数据：`description`、`age_range`、`grade_level`、`tags`、`view_count`、`duration`、`language`、`is_free`、`author`
+
+> 📖 统一资源元数据字段规范见 `./references/schemas/resource-schema.md`
 
 ---
 
@@ -110,199 +75,115 @@ description: 搜索执行层。接收搜索任务清单，调度各平台脚本�
 
 对所有平台的原始结果进行跨平台去重。
 
-**去重策略（三级）**：
+**去重策略（按优先级依次检测）**：
 
-1. **resource_id 完全一致**（最强信号）
-   - 同一平台的相同 ID 直接去重
-   - 保留 `platform_quality_score` 最高的那个
+1. **resource_id 完全一致**（最强信号）：同一平台的相同 ID 直接去重
+2. **URL 结构化去重**：去除 URL 追踪参数（utm_*、spm、share_* 等）后比较
+3. **标题相似度去重**：编辑距离 + TF-IDF 余弦相似度，超过阈值（0.85）视为重复
 
-2. **URL 结构化去重**
-   - 去除 URL 中的追踪参数后比较
-   - 同一资源在不同平台的转载，URL 可能不同，这一步不一定能识别
+检测到重复时，保留 `platform_quality_score` 最高的版本。去重策略保守——宁留几个重复，不误删好资源。
 
-3. **标题相似度去重**
-   - 计算标题的编辑距离和相似度
-   - 相似度超过阈值（如 0.85）视为重复
-   - 保留 `platform_quality_score` 最高的那个
+> 📖 完整去重规则和算法见 `./scripts/shared/dedup.py`
 
-4. **内容指纹去重**（可选，耗时较长）
-   - 对文档/视频简介等内容计算指纹
-   - 指纹相同视为重复
-
-**去重后的处理策略**：
-- `keep_best`（默认）：保留 `platform_quality_score` 最高的
-- `keep_earliest`：保留最先搜到的
-- `mark_and_keep_all`：标记重复但都保留
-
-> 📖 完整去重规则见：`./scripts/shared/dedup.py`
-
-**本步产出**：
-- `deduped_results`：去重后的结果列表（数组）
-- `dedup_stats`：去重统计
-  - 原始数量、去重后数量、移除了多少重复
+**去重产出**：`deduped_results`（去重后列表）+ `dedup_stats`（原始数量/去重后数量/移除数）
 
 ---
 
 ### 第四步：写入输出文件
 
-将去重后的结果写入 `{session_dir}/{output_file}`（通常是 `stage3_candidates.json`）。
-
-> ⚠️ **不做质量评估、不做过滤精选、不做排序**。输出的是去重后的原始结果，由下游 selector 负责评估打分和过滤。
-
-**文件格式**（三层结构）：
+将去重后的结果写入 `{session_dir}/{manifest.stages.stage3.output}`（通常是 `stage3_candidates.json`）。
 
 ```json
 {
   "_meta": {
     "stage": 3,
-    "session_id": "从输入文件中继承",
+    "session_id": "从 manifest 继承",
     "skill": "resource-platforms",
-    "created_at": "当前时间（ISO 8601 格式）",
-    "input_from": "{input_file}"
+    "created_at": "当前时间 ISO 8601",
+    "input_from": "stage2_search_plan.json"
   },
   "_summary": {
-    // 给 flow 看的摘要
+    "total_count": 45,
+    "raw_count": 72,
+    "platforms": ["bilibili", "smartedu", "ximalaya", "zhihu", "generic"],
+    "has_results": true
   },
   "data": {
-    // 给下游 selector 用的去重结果
+    "total_count": 45,
+    "search_summary": "搜索了5个平台，执行15个查询，原始召回72条，去重后45条",
+    "resources": [
+      {
+        "resource_id": "bilibili:BV1xx411c7mD",
+        "title": "小学必背古诗文动画（228集全）",
+        "type": "视频",
+        "platform": "bilibili",
+        "source_url": "https://www.bilibili.com/video/BV1xx411c7mD",
+        "source_name": "B站",
+        "platform_quality_score": 90,
+        "download_feasibility": "中",
+        "description": "动画形式讲解小学必背古诗",
+        "age_range": "6-12岁",
+        "tags": ["古诗", "动画", "系统课程"],
+        "view_count": 5000000,
+        "duration": "共228集"
+      }
+    ],
+    "search_stats": {
+      "platforms_executed": 5,
+      "queries_executed": 15,
+      "raw_count": 72,
+      "deduped_count": 45,
+      "skipped_platforms": []
+    },
+    "intent_data": {}
   }
 }
 ```
 
----
+**_summary**（flow 只读这个做调度）：`total_count`（去重后总数）、`raw_count`（原始召回数）、`platforms`（执行平台列表）、`has_results`（是否有结果）
 
-#### _summary 部分（flow 读这个做调度）
+**data**（下游 selector 读这个）：`total_count`（必选）、`search_summary`（必选）、`resources`（必选，去重后的资源列表）、`search_stats`（可选）、`intent_data`（必选，原样透传 intent 的 data 供 selector 做质量评估）
 
-**必须写入的字段**：
-- `total_count`：去重后结果总数（数字）
-  - 示例：45
-- `raw_count`：去重前原始召回总数（数字）
-  - 示例：72
-- `platforms`：用到的平台列表（数组）
-  - 示例：["bilibili", "smartedu", "ximalaya", "zhihu"]
-- `has_results`：是否有结果（布尔值）
-  - 示例：true
-
-> 💡 _summary 必须精简，flow 只读前几十行就知道结果怎么样。
-> 如果 total_count = 0，flow 会主动询问用户是否放宽条件。
-
----
-
-#### data 部分（下游 selector 读这个）
-
-**必须写入的字段**：
-
-- `total_count`：去重后结果总数（数字，✅必选）
-  - 注意：这个是去重后的原始数量，不是精选后的数量。selector 会从中过滤精选
-
-- `search_summary`：搜索过程摘要（字符串，✅必选）
-  - 示例："搜索了4个平台，执行15个查询，原始召回72条，去重后45条"
-
-- `resources`：去重后的资源列表（数组，✅必选）
-  - 每个资源对象包含：
-    - `resource_id`：资源唯一标识（字符串，✅必选）
-      - 格式：`{platform}:{平台内ID}`
-      - 示例："bilibili:BV1xx411c7mD"
-    - `title`：标题（字符串，✅必选）
-    - `type`：资源类型（字符串，✅必选）
-      - 视频 / 音频 / 文档 / 图文 / 课件 / 练习题
-    - `platform`：平台标识（字符串，✅必选）
-    - `source_url`：来源链接（字符串，✅必选）
-    - `source_name`：来源平台名称（字符串，✅必选）
-    - `platform_quality_score`：平台自评原始分（数字，✅必选）
-      - 0-100 分，平台脚本返回的原始质量分
-      - 这是粗筛信号，不是最终评分。selector 会基于五维体系重新评估
-    - `download_feasibility`：下载可行性预估（字符串，✅必选）
-      - 高 / 中 / 低
-    - `description`：简介/描述（字符串，⚠️可选）
-    - `age_range`：适用年龄范围（字符串，⚠️可选）
-    - `grade_level`：适用年级（字符串，⚠️可选）
-    - `tags`：标签列表（数组，⚠️可选）
-    - `view_count`：播放/浏览量（数字，⚠️可选）
-    - `duration`：时长/集数（字符串，⚠️可选）
-    - `language`：语言（字符串，⚠️可选）
-    - `is_free`：是否免费（布尔值，⚠️可选）
-    - `author`：作者/上传者（字符串，⚠️可选）
-
-> 📖 完整字段规范见：`./references/schemas/resource-schema.md`
-
-- `search_stats`：搜索统计（对象，⚠️可选）
-  - 包含：平台统计、查询数量、原始召回数、去重数等
-  - 供调试和优化参考
-
-- `intent_data`：透传的 intent 数据（对象，⚠️必选）
-  - 把上游 intent 的 data 原样透传，selector 做质量评估时需要 core_topic 和 target_age
+> `platform_quality_score` 是粗筛信号，不是最终评分。selector 会基于五维体系重新评估。
 
 ---
 
 ## 完成后
 
-### 1. 确认输出
+### 1. 更新 manifest
 
-确认 `{session_dir}/{output_file}` 已成功写入。
+将 `manifest.json` 中 `stages.stage3.status` 更新为 `completed`。
 
-### 2. 清理临时文件
+### 2. 返回摘要
 
-清理搜索过程中产生的临时文件（如果有）。
-
-### 3. 通知 flow
-
-向 flow 返回执行结果，只返回 _summary 的内容：
+只返回 `_summary`，不展开完整资源列表：
 
 ```
 ✅ 已完成搜索执行
-📄 输出文件：{output_file}
+📄 输出文件：stage3_candidates.json
 📊 摘要：
 - 去重后结果：{total_count} 个（原始召回 {raw_count} 个）
 - 覆盖平台：{platforms 数量} 个
 ```
 
-> 💡 **重要**：只返回 _summary，不要在上下文中展开完整的资源列表。
-> 完整数据已经写入文件，下游 selector Skill 会去读、评估、过滤后展示给用户。
+> 完整数据已写入文件，下游 selector 会去读、评估、过滤后展示给用户。不要在上下文中展开资源列表。
 
 ---
 
 ## 关键原则
 
-### 执行原则
-1. **按优先级执行**：高优先级平台先搜，保证核心覆盖
-2. **结果标准化**：各平台的结果都要转为统一格式
-3. **错误容错**：某个平台失败不影响整体，跳过继续
-
-### 去重原则
-1. **宁重勿漏**：去重要保守，宁可留几个重复，也不要误删好资源
-2. **保留最优**：重复的资源保留 `platform_quality_score` 最高的
-
-### 边界原则
-1. **只搜索不去重之外做判断**：不做质量评估、不做过滤精选、不做排序
-2. **透传而非裁剪**：搜索结果原样透传给 selector，由它做判断
-3. **platform_quality_score 是粗筛信号**：平台脚本的自评分仅供参考，不是最终评分
-
----
-
-## 平台能力速查
-
-| 平台 | 搜索能力 | 登录要求 | 反爬等级 | 脚本路径 |
-|------|---------|---------|---------|---------|
-| bilibili | ✅ 强 | 无需 | ⭐⭐⭐⭐ | scripts/bilibili/ |
-| smartedu | ✅ 强 | 可选 | ⭐⭐⭐ | scripts/smartedu/ |
-| zhihu | ✅ 中 | Cookie | ⭐⭐⭐ | scripts/zhihu/ |
-| douyin | ✅ 中 | 自动 | ⭐⭐⭐⭐ | scripts/douyin/ |
-| weibo | ✅ 中 | Cookie | ⭐⭐⭐ | scripts/weibo/ |
-| ximalaya | ✅ 强 | 无需 | ⭐ | scripts/ximalaya/ |
-| open163 | ✅ 中 | 无需 | ⭐ | scripts/open163/ |
-
-> 📖 各平台详细说明见 `./references/platforms/` 下对应文档
+- 按优先级执行，高优先级平台先搜，保证核心覆盖
+- 结果标准化：各平台结果统一转为 resource-schema 规定的格式
+- 错误容错：某个平台失败不影响整体，跳过继续
+- 去重保守：宁留几个重复，不误删好资源
+- 只做搜索和去重，不做质量评估、过滤精选和排序——输出原始结果，判断权交给 selector
 
 ---
 
 ## 参考资料
 
-- **资源元数据规范**：`./references/schemas/resource-schema.md`（统一资源格式）
-- **错误码体系**：`./references/schemas/error-codes.md`（统一错误码）
-- **搜索接口契约**：`./references/schemas/platform-search-contract.md`（平台搜索接口规范）
-- **下载接口契约**：`./references/schemas/platform-download-contract.md`（平台下载接口规范）
-- **各平台文档**：`./references/platforms/{platform_id}.md`（7 个平台的详细说明）
-- **下载方法详解**：`./references/download-methods.md`（通用下载方法）
-
-> 💡 参考资料放在最后，执行主流程时不需要看，需要时再查阅。
+- `./references/schemas/resource-schema.md` — 统一资源元数据字段规范
+- `./references/schemas/platform-search-contract.md` — 平台搜索接口规范
+- `./references/platforms/{platform_id}.md` — 各平台搜索文档（bilibili/smartedu/ximalaya/open163/zhihu/douyin/weibo）
+- `./scripts/shared/dedup.py` — 跨平台去重引擎（DedupEngine）
+- `./scripts/shared/config_loader.py` — 统一配置加载器（ConfigLoader / get_config）

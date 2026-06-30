@@ -34,7 +34,7 @@
   # 指定 m3u8 下载并发数和输出格式
   python smartedu_download.py download "https://..." --video-concurrency 8 --video-output mp4
 
-架构详情（含下载流程图、CDN 认证机制、错误处理策略）见 ``../references/architecture.md``。
+架构详情见 ``../references/platforms/smartedu.md``。
 """
 
 from __future__ import annotations
