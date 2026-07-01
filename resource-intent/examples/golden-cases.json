@@ -1,17 +1,31 @@
 {
-  "schema_version": "intent-golden/v1",
+  "schema_version": "intent-brief-golden/v1",
   "cases": [
+    {
+      "id": "broad-primary-math-needs-anchor",
+      "request": "帮我找一些小学数学资料",
+      "expect": {
+        "status": "needs_clarification",
+        "brief_contains": ["小学数学", "范围"],
+        "question_mentions_any": ["年级", "知识点", "整个小学阶段"]
+      }
+    },
+    {
+      "id": "explicit-full-range-exploration",
+      "request": "覆盖整个小学阶段的数学资源，先看看有哪些类型",
+      "expect": {
+        "status": "ready",
+        "brief_contains": ["整个小学阶段", "资源概览"],
+        "must_not_clarify": ["年级", "知识点"]
+      }
+    },
     {
       "id": "explicit-grade-math-course",
       "request": "四年级数学课程",
       "expect": {
         "status": "ready",
-        "explicit_slots": ["core_topic", "grade_level", "format_preferences"],
-        "inferred_slots": ["learning_domain"],
-        "omitted_slots": ["resource_types", "file_formats"],
-        "must": [],
-        "prefer": [],
-        "exclude": []
+        "brief_contains": ["四年级", "数学课程"],
+        "brief_forbids": ["系统学习", "中文", "人教版"]
       }
     },
     {
@@ -19,28 +33,33 @@
       "request": "想找些孩子上学路上听的英语启蒙内容",
       "expect": {
         "status": "ready",
-        "inferred_slots": ["resource_types", "format_preferences", "use_scenario"],
-        "must": [],
-        "prefer": ["适合路上听"]
+        "brief_contains": ["英语启蒙", "上学路上", "收听"]
       }
     },
     {
-      "id": "ambiguous-programming",
-      "request": "想让孩子学编程",
+      "id": "ambiguous-directed-programming",
+      "request": "给孩子找一套马上可以开始学的编程课程",
       "expect": {
         "status": "needs_clarification",
-        "clarification_field": "core_topic",
         "question_mentions_any": ["Scratch", "Python", "机器人"]
       }
     },
     {
-      "id": "user-delegates-choice",
-      "request": "想找点恐龙科普，形式你看着办",
+      "id": "broad-programming-discovery",
+      "request": "先看看儿童编程有哪些学习资源",
       "expect": {
         "status": "ready",
-        "explicit_slots": ["core_topic", "resource_types"],
-        "slot_values": {"resource_types": ["不限"]},
-        "omitted_slots": ["format_preferences", "file_formats"]
+        "brief_contains": ["儿童编程", "资源概览"],
+        "must_not_clarify": ["Scratch", "Python", "机器人"]
+      }
+    },
+    {
+      "id": "user-delegates-format",
+      "request": "想找点恐龙科普，形式都可以",
+      "expect": {
+        "status": "ready",
+        "brief_contains": ["恐龙科普", "不限定资源形式"],
+        "requirements": []
       }
     },
     {
@@ -48,8 +67,10 @@
       "request": "只要免费的，最好是官方的小学安全教育资源",
       "expect": {
         "status": "ready",
-        "must": ["免费"],
-        "prefer": ["官方来源"]
+        "requirements": [
+          {"text_contains": "免费", "strength": "must"},
+          {"text_contains": "官方", "strength": "prefer"}
+        ]
       }
     },
     {
@@ -57,8 +78,10 @@
       "request": "不要视频，找二年级语文阅读理解材料",
       "expect": {
         "status": "ready",
-        "exclude": ["视频"],
-        "explicit_slots": ["grade_level", "core_topic"]
+        "brief_contains": ["二年级", "语文阅读理解"],
+        "requirements": [
+          {"text_contains": "视频", "strength": "exclude"}
+        ]
       }
     },
     {
@@ -66,7 +89,7 @@
       "request": "人教版五年级上册数学同步练习",
       "expect": {
         "status": "ready",
-        "explicit_slots": ["version", "grade_level", "core_topic", "learning_goal"]
+        "brief_contains": ["人教版", "五年级上册", "数学同步练习"]
       }
     },
     {
@@ -74,58 +97,24 @@
       "request": "给6岁的四年级孩子找数学同步课",
       "expect": {
         "status": "needs_clarification",
-        "ambiguity_fields": ["target_age", "grade_level"]
+        "question_mentions_any": ["6岁", "四年级", "以哪个为准"]
       }
     },
     {
-      "id": "broad-category",
+      "id": "no-learning-content",
       "request": "帮我找点学习资源",
       "expect": {
         "status": "needs_clarification",
-        "clarification_field": "core_topic"
+        "question_mentions_any": ["学科", "主题", "能力"]
       }
     },
     {
-      "id": "problem-to-goal",
+      "id": "problem-with-specific-content",
       "request": "孩子做应用题总是不知道从哪下手",
       "expect": {
         "status": "ready",
-        "inferred_slots": ["core_topic", "learning_goal"],
-        "must": []
-      }
-    },
-    {
-      "id": "exhaustive-mode",
-      "request": "把适合小学生的天文科普资源尽量全面地找一下",
-      "expect": {
-        "status": "ready",
-        "slot_values": {"search_mode": "exhaustive"}
-      }
-    },
-    {
-      "id": "english-content-language-unknown",
-      "request": "找英语启蒙资源",
-      "expect": {
-        "status": "ready",
-        "unknown_or_defaulted_slots": ["language"],
-        "forbid_assumption": "资源必须全英文"
-      }
-    },
-    {
-      "id": "clear-topic-no-age",
-      "request": "找恐龙科普资源，视频图文都可以",
-      "expect": {
-        "status": "ready",
-        "unknown_or_inferred_slots": ["target_age"],
-        "must_not_clarify": ["target_age"]
-      }
-    },
-    {
-      "id": "clear-grade-no-age",
-      "request": "找三年级应用题专项练习",
-      "expect": {
-        "status": "ready",
-        "must_not_clarify": ["target_age", "resource_types", "format_preferences", "file_formats"]
+        "brief_contains": ["应用题"],
+        "brief_forbids": ["审题方法", "学习习惯", "粗心"]
       }
     },
     {
@@ -133,7 +122,24 @@
       "request": "孩子数学不太好，想补一补",
       "expect": {
         "status": "needs_clarification",
-        "question_mentions_any": ["计算", "应用题", "概念"]
+        "question_mentions_any": ["计算", "应用题", "数学概念"]
+      }
+    },
+    {
+      "id": "exhaustive-mode-natural-language",
+      "request": "把适合小学生的天文科普资源尽量全面地找一下",
+      "expect": {
+        "status": "ready",
+        "brief_contains": ["小学生", "天文科普", "尽量全面"]
+      }
+    },
+    {
+      "id": "english-language-stays-open",
+      "request": "找英语启蒙资源",
+      "expect": {
+        "status": "ready",
+        "brief_contains": ["英语启蒙"],
+        "brief_forbids": ["必须全英文", "中文讲解"]
       }
     },
     {
@@ -141,7 +147,7 @@
       "request": "不要视频，最好找动画讲解",
       "expect": {
         "status": "needs_clarification",
-        "ambiguity_fields": ["format_preferences", "constraints"]
+        "question_mentions_any": ["完全不要视频", "接受动画"]
       }
     },
     {
@@ -149,32 +155,15 @@
       "request": "想找儿童身体边界教育资源",
       "expect": {
         "status": "needs_clarification",
-        "clarification_field": "target_age",
-        "reason_contains": "适龄"
-      }
-    },
-    {
-      "id": "no-platform-question",
-      "request": "推荐几个古诗启蒙动画",
-      "expect": {
-        "status": "ready",
-        "must_not_clarify": ["source_constraints", "platform"]
-      }
-    },
-    {
-      "id": "user-wants-first-look",
-      "request": "先给我看看有哪些儿童情绪管理资源",
-      "expect": {
-        "status": "ready",
-        "must_not_clarify": ["resource_types", "format_preferences", "file_formats", "source_constraints"]
+        "question_mentions_any": ["年龄", "适龄"]
       }
     },
     {
       "id": "independent-multiple-goals",
       "request": "想找三年级数学练习，也想找儿童画教程",
       "expect": {
-        "status": "needs_clarification",
-        "question_mentions_any": ["先", "分别", "哪个"]
+        "status": "ready",
+        "brief_contains": ["三年级数学练习", "儿童画教程"]
       }
     },
     {
@@ -182,34 +171,46 @@
       "request": "找五年级数学 PDF 试卷，最好也有 PPT 讲解课件",
       "expect": {
         "status": "ready",
-        "inferred_slots": ["resource_types"],
-        "explicit_slots": ["format_preferences", "file_formats"],
-        "slot_values": {
-          "resource_types": ["文档类", "练习类"],
-          "file_formats": ["PDF", "PPT"]
-        },
-        "prefer": ["PPT讲解课件"]
+        "brief_contains": ["五年级数学", "PDF试卷"],
+        "requirements": [
+          {"text_contains": "PPT讲解课件", "strength": "prefer"}
+        ]
       }
     },
     {
-      "id": "unspecified-resource-form-stays-unknown",
-      "request": "找适合小学生了解太阳系的资源",
-      "expect": {
-        "status": "ready",
-        "omitted_slots": ["resource_types", "format_preferences", "file_formats"],
-        "forbid_assumption": "默认使用视频、图文或文档"
-      }
-    },
-    {
-      "id": "printable-is-not-file-format",
+      "id": "printable-not-file-format",
       "request": "找可打印的二年级口算题卡",
       "expect": {
         "status": "ready",
-        "inferred_slots": ["resource_types"],
-        "explicit_slots": ["format_preferences"],
-        "omitted_slots": ["file_formats"],
-        "must": ["可打印"],
-        "forbid_file_formats": ["可打印"]
+        "brief_contains": ["二年级口算题卡", "可打印"],
+        "brief_forbids": ["PDF格式"]
+      }
+    },
+    {
+      "id": "learning-habit-needs-supported-content",
+      "request": "找些资源帮孩子改掉拖拉写作业的习惯",
+      "expect": {
+        "status": "needs_clarification",
+        "brief_forbids": ["时间管理课程", "学习习惯训练"],
+        "question_mentions_any": ["学科", "主题", "能力"]
+      }
+    },
+    {
+      "id": "learning-method-needs-supported-content",
+      "request": "找一套教孩子做阅读笔记的方法",
+      "expect": {
+        "status": "needs_clarification",
+        "brief_forbids": ["阅读理解资源"],
+        "question_mentions_any": ["学科", "主题", "能力"]
+      }
+    },
+    {
+      "id": "problem-plus-concrete-content",
+      "request": "孩子总粗心，想找二年级口算练习",
+      "expect": {
+        "status": "ready",
+        "brief_contains": ["二年级口算练习"],
+        "brief_forbids": ["粗心训练", "检查习惯"]
       }
     }
   ]

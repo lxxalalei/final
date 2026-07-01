@@ -31,7 +31,7 @@
 |---|---|---|---|
 | `request.json` | `request/v1` | learning-resource-flow | resource-intent |
 | `manifest.json` | `session-manifest/v1` | learning-resource-flow | 全部 Skill 只读 |
-| `stage1_intent.json` | `intent-spec/v1` | resource-intent | resource-search、resource-selector、library-manager |
+| `stage1_intent.json` | `intent-brief/v1` | resource-intent | resource-search、resource-selector、library-manager |
 | `stage2_search_plan.json` | `search-plan/v1` | resource-search | resource-platforms |
 | `stage3_search_results.json` | `platform-results/v1` | resource-platforms | resource-selector、resource-downloader、library-manager |
 | `stage4_selection.json` | `selection/v1` | resource-selector | resource-downloader、library-manager |
@@ -45,7 +45,7 @@
 ```json
 {
   "_meta": {
-    "schema_version": "intent-spec/v1",
+    "schema_version": "intent-brief/v1",
     "session_id": "20260630-1030-math-grade4",
     "created_at": "2026-06-30T10:31:00+08:00"
   },
@@ -126,7 +126,7 @@ Manifest 只服务调度和恢复，不复制业务数据、阶段文件名、�
 ```json
 {
   "_meta": {
-    "schema_version": "intent-spec/v1",
+    "schema_version": "intent-brief/v1",
     "session_id": "20260630-1030-math-grade4",
     "created_at": "2026-06-30T10:31:00+08:00"
   },
@@ -136,71 +136,31 @@ Manifest 只服务调度和恢复，不复制业务数据、阶段文件名、�
   "data": {
     "status": "ready",
     "raw_request": "四年级数学课程",
-    "slots": {
-      "core_topic": {
-        "value": "小学四年级数学课程",
-        "status": "explicit",
-        "evidence": ["四年级数学课程"]
-      },
-      "grade_level": {
-        "value": "小学四年级",
-        "status": "explicit",
-        "evidence": ["四年级"]
-      },
-      "learning_goal": {
-        "value": "系统学习",
-        "status": "inferred",
-        "evidence": ["课程"]
-      },
-      "format_preferences": {
-        "value": ["课程"],
-        "status": "explicit",
-        "evidence": ["课程"]
+    "clarified_need": "为小学四年级孩子收集数学课程资源。用户没有限定教材版本、学习任务、资源形式、语言或费用。",
+    "evidence": [
+      {
+        "statement": "资源适用于小学四年级数学",
+        "quote": "四年级数学课程"
       }
-    },
-    "constraints": {},
-    "search_concepts": {
-      "canonical_terms": ["小学四年级", "数学", "课程"],
-      "synonyms": ["同步课程", "数学课"],
-      "related_terms": ["知识点讲解", "单元课程"]
-    }
+    ],
+    "requirements": []
   }
 }
 ```
 
 `_summary.status` 与 `data.status` 必须一致。需要澄清时 `_summary` 额外包含唯一的 `question`，使 Flow 无需读取完整 Intent 数据：
 
-### 6.2 槽位
+### 6.2 语义简报
 
-允许的槽位：
+| 字段 | 必填 | 说明 |
+|---|:---:|---|
+| `raw_request` | 是 | 用户最初请求原文 |
+| `clarified_need` | 是 | 模型形成的完整自然语言需求简报，供下游直接理解 |
+| `evidence` | 是 | 已确认事实及其最短用户原话，可以为空数组 |
+| `requirements` | 是 | 用户明确要求，保留 `must` / `prefer` / `exclude` 强度与证据 |
+| `assumptions` | 否 | 为继续流程采用的低风险、可撤销假设 |
 
-- `core_topic`
-- `learning_domain`
-- `target_age`
-- `grade_level`
-- `learning_goal`
-- `difficulty`
-- `resource_types`
-- `format_preferences`
-- `file_formats`
-- `use_scenario`
-- `version`
-- `language`
-- `search_mode`
-
-只输出已有值或本轮确实采用了默认值的槽位。未知槽位直接省略，不创建 `status=unknown` 的空对象。
-
-每个已输出槽位只包含：
-
-| 字段 | 说明 |
-|---|---|
-| `value` | string 或 string[] |
-| `status` | `explicit` / `inferred` / `defaulted` |
-| `evidence` | 支持该值的用户原话；默认值可以使用空数组 |
-
-不输出主观 `confidence`。准确性由 `status + evidence` 约束：`explicit` 必须有直接证据，`inferred` 必须有支持推断的原话，`defaulted` 必须可被用户后续覆盖。
-
-来源偏好不再单设槽位，按强度写入 `constraints.must` 或 `constraints.prefer`。`constraints` 与 `search_concepts` 只保留非空子项。
+Intent 不再输出固定 slots、搜索同义词或扩展概念。下游读取完整 `clarified_need`，并用 evidence 和 requirements 校验模型理解；Search 自己负责查询扩展和资源组合决策。
 
 ### 6.3 澄清
 
@@ -214,19 +174,24 @@ Manifest 只服务调度和恢复，不复制业务数据、阶段文件名、�
   },
   "data": {
     "status": "needs_clarification",
-    "raw_request": "找一套入门资料",
-    "slots": {},
-    "constraints": {},
-    "search_concepts": {},
+    "raw_request": "帮我找一些小学数学资料",
+    "clarified_need": "已知用户需要小学数学资料，但尚无足以指导资源取舍的范围。",
+    "evidence": [
+      {
+        "statement": "资源范围属于小学数学",
+        "quote": "小学数学资料"
+      }
+    ],
+    "requirements": [],
     "clarification": {
-      "question": "你想入门的是哪个主题？",
-      "reason": "当前没有可用于搜索的核心主题"
+      "question": "你希望按某个年级、某个数学知识点，还是整个小学阶段来收集？",
+      "reason": "当前范围横跨多个年级和内容方向，直接收集会产生任意结果"
     }
   }
 }
 ```
 
-`clarification` 只在 `needs_clarification` 时存在，只包含一个问题和原因。`ready` 时省略。无需另写 `clarification.required`、`missing_information` 或 `ambiguities`，它们都能由状态、问题和已有槽位表达。
+`clarification` 只在 `needs_clarification` 时存在，只包含一个问题和原因。`ready` 时省略。无需另写缺失字段或歧义列表，当前理解已经由 `clarified_need` 表达。
 
 采用了可撤销假设时增加 `assumptions: string[]`；没有假设时省略。
 

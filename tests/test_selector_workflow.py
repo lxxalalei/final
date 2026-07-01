@@ -30,7 +30,10 @@ class TestSelectorWorkflow(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.session = Path(self.temp.name)
-        intent = {"_meta": {"session_id": "s1"}, "data": {"slots": {}}}
+        intent = {
+            "_meta": {"session_id": "s1"},
+            "data": {"clarified_need": "测试学习资源需求", "evidence": [], "requirements": []},
+        }
         stage3 = {
             "_meta": {"session_id": "s1"},
             "data": {

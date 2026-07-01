@@ -70,7 +70,7 @@ skill-name/
 ```json
 {
   "_meta": {
-    "schema_version": "intent-spec/v1",
+    "schema_version": "intent-brief/v1",
     "session_id": "...",
     "created_at": "ISO 8601"
   },

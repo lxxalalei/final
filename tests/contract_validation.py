@@ -88,7 +88,7 @@ class TestSkillPipelineContract(unittest.TestCase):
         for version in (
             "request/v1",
             "session-manifest/v1",
-            "intent-spec/v1",
+            "intent-brief/v1",
             "search-plan/v1",
             "platform-results/v1",
             "selection/v1",

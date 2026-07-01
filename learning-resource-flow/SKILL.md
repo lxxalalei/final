@@ -107,7 +107,7 @@ Stage 1 只能读取该快照，不依赖未持久化的聊天上下文。Flow �
 
 1. 确认 `{session_dir}/request.json` 已通过输入校验；否则停止。
 2. 将 manifest 的 `current_stage` 设为 1，`stages.stage1.status` 设为 `in_progress`。
-3. 调用 `resource-intent`，只传递绝对 `{session_dir}`；Intent 固定读取 `request.json`，输出 `stage1_intent.json`（`intent-spec/v1`）。
+3. 调用 `resource-intent`，只传递绝对 `{session_dir}`；Intent 固定读取 `request.json`，输出 `stage1_intent.json`（`intent-brief/v1`）。
 4. 确认输出文件存在，并运行 `resource-intent/scripts/validate_output.py`。输出缺失或校验失败时将 stage 1 标记为 `failed`，不得继续。
 5. 读取 `_summary.status`；它必须与 `data.status` 一致。
 6. `_summary.status=ready` 时，将 stage 1 标记为 `completed`，再进入 stage 2。

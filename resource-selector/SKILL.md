@@ -37,7 +37,7 @@ python3 resource-selector/scripts/prepare_candidates.py {session_dir}
 
 ### 2. 重新理解需求
 
-完整阅读 Intent，不要只拿 `core_topic` 做字符串匹配。明确：
+完整阅读 Intent 的 `clarified_need`，并用 `evidence` 和 `requirements` 校验，不要从标题关键词重新猜测用户需求。明确：
 
 - 用户真正要学习什么、用于什么场景。
 - 年龄、年级、难度和学习目标。

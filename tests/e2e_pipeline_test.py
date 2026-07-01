@@ -23,35 +23,15 @@ def envelope(schema_version: str, data: dict, summary: dict | None = None) -> di
     return document
 
 
-def string_slot(value: str, status: str = "explicit", evidence: list[str] | None = None) -> dict:
-    return {"value": value, "status": status, "evidence": evidence or []}
-
-
-def array_slot(value: list[str], status: str = "explicit", evidence: list[str] | None = None) -> dict:
-    return {"value": value, "status": status, "evidence": evidence or []}
-
-
 def run_pipeline() -> list[dict]:
-    stage1 = envelope("intent-spec/v1", {
+    stage1 = envelope("intent-brief/v1", {
         "status": "ready",
         "raw_request": "四年级数学课程",
-        "slots": {
-            "core_topic": string_slot("小学四年级数学课程", evidence=["四年级数学课程"]),
-            "learning_domain": string_slot("数学", "inferred", ["数学课程"]),
-            "target_age": string_slot("9-10岁", "inferred", ["四年级"]),
-            "grade_level": string_slot("小学四年级", evidence=["四年级"]),
-            "learning_goal": string_slot("系统学习", "inferred", ["课程"]),
-            "format_preferences": array_slot(["课程"], "explicit", ["课程"]),
-            "language": string_slot("中文", "defaulted"),
-            "search_mode": string_slot("standard", "defaulted"),
-        },
-        "constraints": {},
-        "search_concepts": {
-            "canonical_terms": ["小学四年级", "数学", "课程"],
-            "synonyms": ["同步课程", "数学课"],
-            "related_terms": ["知识点讲解", "单元课程"],
-        },
-        "assumptions": ["默认资源语言为中文", "使用标准搜索模式"],
+        "clarified_need": "为小学四年级孩子收集数学课程资源。用户没有限定教材版本、学习任务、资源形式、语言或费用。",
+        "evidence": [
+            {"statement": "资源适用于小学四年级数学", "quote": "四年级数学课程"},
+        ],
+        "requirements": [],
     }, {"status": "ready"})
 
     stage2 = envelope("search-plan/v1", {"search_tasks": [
@@ -126,12 +106,14 @@ class TestSixStagePipeline(unittest.TestCase):
         self.assertEqual(sum(self.stages[4]["_summary"].values()), len(self.stages[4]["data"]["results"]))
         self.assertEqual(sum(self.stages[5]["_summary"].values()), len(self.stages[5]["data"]["results"]))
 
-    def test_intent_omits_unknown_and_confidence(self) -> None:
-        slots = self.stages[0]["data"]["slots"]
-        self.assertNotIn("file_formats", slots)
-        self.assertNotIn("source_preferences", slots)
-        self.assertTrue(all("confidence" not in slot for slot in slots.values()))
-        self.assertEqual(slots["format_preferences"]["value"], ["课程"])
+    def test_intent_uses_semantic_brief_instead_of_slots(self) -> None:
+        data = self.stages[0]["data"]
+        self.assertEqual(
+            set(data),
+            {"status", "raw_request", "clarified_need", "evidence", "requirements"},
+        )
+        self.assertNotIn("slots", data)
+        self.assertNotIn("search_concepts", data)
 
     def test_search_contains_only_executable_fields(self) -> None:
         for task in self.stages[1]["data"]["search_tasks"]:

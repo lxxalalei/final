@@ -46,16 +46,31 @@ class TestSemanticContracts(unittest.TestCase):
     def test_valid_intent_passes_manual_validator(self) -> None:
         self.assertEqual(intent_validator.validate(self.intent), [])
 
-    def test_intent_explicit_requires_evidence(self) -> None:
+    def test_intent_evidence_requires_quote(self) -> None:
         broken = copy.deepcopy(self.intent)
-        broken["data"]["slots"]["core_topic"]["evidence"] = []
+        broken["data"]["evidence"][0]["quote"] = ""
         errors = intent_validator.validate(broken)
-        self.assertTrue(any("explicit" in error and "evidence" in error for error in errors))
+        self.assertTrue(any("quote" in error for error in errors))
+
+    def test_ready_intent_requires_evidence(self) -> None:
+        broken = copy.deepcopy(self.intent)
+        broken["data"]["evidence"] = []
+        errors = intent_validator.validate(broken)
+        self.assertTrue(any("至少提供一条 evidence" in error for error in errors))
 
     def test_intent_rejects_executable_queries(self) -> None:
         broken = copy.deepcopy(self.intent)
         broken["data"]["queries"] = ["不应存在"]
-        self.assertTrue(any("不得输出搜索执行字段" in error for error in intent_validator.validate(broken)))
+        self.assertTrue(any("不得输出旧槽位或搜索执行字段" in error for error in intent_validator.validate(broken)))
+
+    def test_intent_accepts_evidence_backed_requirement(self) -> None:
+        intent = copy.deepcopy(self.intent)
+        intent["data"]["requirements"] = [{
+            "text": "资源必须免费",
+            "strength": "must",
+            "evidence": "只要免费的",
+        }]
+        self.assertEqual(intent_validator.validate(intent), [])
 
     def test_intent_carries_only_one_clarification_question(self) -> None:
         needs = copy.deepcopy(self.intent)
