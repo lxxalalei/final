@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
-import importlib.util
 import json
 import os
 import sys
@@ -144,7 +143,12 @@ async def run(plan: dict[str, Any], registry_document: dict[str, Any]) -> dict[s
         async with semaphore:
             return await execute_task(task, registry)
 
-    executions = await asyncio.gather(*(bounded(task) for task in tasks))
+    executions: list[tuple[list[dict], list[dict]]] = []
+    # 优先级按波次执行；同一波次的平台并行。缺省 P1 兼容旧计划与单元测试。
+    for priority in ("P0", "P1", "P2"):
+        wave = [task for task in tasks if task.get("priority", "P1") == priority]
+        if wave:
+            executions.extend(await asyncio.gather(*(bounded(task) for task in wave)))
     resources = exact_dedup([item for result, _ in executions for item in result])
     errors = [error for _, task_errors in executions for error in task_errors]
     failed_platforms = []

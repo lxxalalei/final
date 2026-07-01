@@ -56,27 +56,26 @@ def run_pipeline() -> list[dict]:
 
     stage2 = envelope("search-plan/v1", {"search_tasks": [
         {
-            "platform": "smartedu",
+            "platform": "generic",
             "priority": "P0",
             "searches": [
-                {"query": "小学四年级 数学 同步课程", "max_results": 15},
-                {"query": "四年级数学 单元课程", "max_results": 15},
+                {"query": "小学四年级 数学 学习资源", "max_results": 15, "params": {"engines": ["baidu", "bing"]}},
+                {"query": "四年级数学 概念理解 练习材料", "max_results": 15, "params": {"engines": ["baidu", "bing"]}},
+            ],
+        },
+        {
+            "platform": "smartedu",
+            "priority": "P1",
+            "searches": [
+                {"query": "小学四年级 数学 同步课程", "max_results": 12},
+                {"query": "四年级数学 单元课程", "max_results": 12},
             ],
         },
         {
             "platform": "bilibili",
-            "priority": "P1",
+            "priority": "P2",
             "searches": [
-                {"query": "四年级数学 知识点讲解", "max_results": 15},
-                {"query": "小学四年级数学 单元课程", "max_results": 15},
-            ],
-        },
-        {
-            "platform": "generic",
-            "priority": "P1",
-            "searches": [
-                {"query": "小学四年级 数学 公开课程", "max_results": 15, "params": {"engines": ["baidu", "bing"]}},
-                {"query": "四年级数学 课程资源", "max_results": 15, "params": {"engines": ["baidu", "bing"]}},
+                {"query": "四年级数学 难点演示", "max_results": 8},
             ],
         },
     ]})

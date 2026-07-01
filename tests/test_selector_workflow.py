@@ -59,7 +59,7 @@ class TestSelectorWorkflow(unittest.TestCase):
         review = {
             "_meta": {"schema_version": "selector-review/v1", "session_id": "s1"},
             "data": {
-                "candidates": [{"resource_id": "a:2", "relevance": "high", "quality_score": 80, "reasons": ["匹配"], "notes": []}],
+                "candidates": [{"resource_id": "a:2", "relevance": "high", "quality_score": 80, "resource_role": "核心课程", "reasons": ["匹配"], "notes": []}],
                 "excluded": [{"resource_id": "b:1", "reason": "学段不匹配"}],
             },
         }
@@ -68,8 +68,8 @@ class TestSelectorWorkflow(unittest.TestCase):
     def test_finalize_only_uses_reviewed_candidates(self) -> None:
         review = {
             "data": {"candidates": [
-                {"resource_id": "a:2", "quality_score": 80, "notes": ["版本未知"]},
-                {"resource_id": "c:1", "quality_score": 70, "notes": []},
+                {"resource_id": "a:2", "quality_score": 80, "resource_role": "核心课程", "notes": ["版本未知"]},
+                {"resource_id": "c:1", "quality_score": 70, "resource_role": "练习", "notes": []},
             ]}
         }
         selected = finalize.selected_from_review(review, [2], [], False)
@@ -83,7 +83,7 @@ class TestSelectorWorkflow(unittest.TestCase):
         review = {
             "_meta": {"schema_version": "selector-review/v1", "session_id": "s1"},
             "data": {
-                "candidates": [{"resource_id": "a:2", "relevance": "high", "quality_score": 80, "reasons": ["匹配"], "notes": []}],
+                "candidates": [{"resource_id": "a:2", "relevance": "high", "quality_score": 80, "resource_role": "核心课程", "reasons": ["匹配"], "notes": []}],
                 "excluded": [{"resource_id": "b:1", "reason": "学段不匹配"}],
             },
         }
@@ -93,6 +93,21 @@ class TestSelectorWorkflow(unittest.TestCase):
         lines = text.splitlines()
         title_index = lines.index("1. [A级 · 80分] 四年级数学课程")
         self.assertEqual(lines[title_index + 1], "   链接：https://example.test/a")
+        self.assertIn("   用途：核心课程", lines)
+
+    def test_review_order_can_diversify_instead_of_sorting_by_score(self) -> None:
+        selector_input = prepare.prepare(self.session)
+        review = {
+            "_meta": {"schema_version": "selector-review/v1", "session_id": "s1"},
+            "data": {
+                "candidates": [
+                    {"resource_id": "a:2", "relevance": "high", "quality_score": 75, "resource_role": "可复用材料", "reasons": ["可直接使用"], "notes": []},
+                    {"resource_id": "b:1", "relevance": "medium", "quality_score": 85, "resource_role": "补充说明", "reasons": ["提供不同用途"], "notes": []},
+                ],
+                "excluded": [],
+            },
+        }
+        self.assertEqual(validate.validate(selector_input, review), [])
 
 
 if __name__ == "__main__":

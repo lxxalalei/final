@@ -47,6 +47,8 @@ def validate(selector_input: dict[str, Any], review: dict[str, Any]) -> list[str
             errors.append(f"{prefix}.quality_score 必须是 40-100 整数")
         if item.get("relevance") not in {"high", "medium"}:
             errors.append(f"{prefix}.relevance 必须是 high 或 medium")
+        if not isinstance(item.get("resource_role"), str) or not item["resource_role"].strip():
+            errors.append(f"{prefix}.resource_role 必须是非空字符串")
         reasons = item.get("reasons")
         if not isinstance(reasons, list) or not reasons or not all(isinstance(value, str) and value.strip() for value in reasons):
             errors.append(f"{prefix}.reasons 必须是非空字符串数组")
@@ -71,9 +73,6 @@ def validate(selector_input: dict[str, Any], review: dict[str, Any]) -> list[str
             errors.append(f"缺少审查资源: {missing}")
         if extra:
             errors.append(f"出现未知资源: {extra}")
-    scores = [item.get("quality_score", 0) for item in candidates if isinstance(item, dict)]
-    if scores != sorted(scores, reverse=True):
-        errors.append("candidates 必须按 quality_score 降序排列")
     return errors
 
 

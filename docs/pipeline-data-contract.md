@@ -244,28 +244,33 @@ Search 读取 Stage 1。只有 `data.status=ready` 时才能写入计划。
   "data": {
     "search_tasks": [
       {
-        "platform": "smartedu",
+        "platform": "generic",
         "priority": "P0",
         "searches": [
-          {"query": "小学四年级 数学 同步课程", "max_results": 15}
+          {
+            "query": "小学四年级 数学 学习资源",
+            "max_results": 15,
+            "params": {"engines": ["baidu", "bing"]}
+          },
+          {
+            "query": "四年级数学 概念理解 练习材料",
+            "max_results": 15,
+            "params": {"engines": ["baidu", "bing"]}
+          }
+        ]
+      },
+      {
+        "platform": "smartedu",
+        "priority": "P1",
+        "searches": [
+          {"query": "小学四年级 数学 同步课程", "max_results": 12}
         ]
       },
       {
         "platform": "bilibili",
-        "priority": "P1",
+        "priority": "P2",
         "searches": [
-          {"query": "四年级数学 知识点讲解", "max_results": 15}
-        ]
-      },
-      {
-        "platform": "generic",
-        "priority": "P1",
-        "searches": [
-          {
-            "query": "四年级数学 公开课程",
-            "max_results": 20,
-            "params": {"engines": ["baidu", "bing"]}
-          }
+          {"query": "四年级数学 难点演示", "max_results": 8}
         ]
       }
     ]
@@ -283,6 +288,8 @@ Search 读取 Stage 1。只有 `data.status=ready` 时才能写入计划。
 | `searches[].query` | 是 | 直接交给平台的关键词 |
 | `searches[].max_results` | 是 | 1—100，控制本次搜索深度 |
 | `searches[].params` | 否 | 仅在平台真实接口需要额外参数时输出 |
+
+第一个任务固定为 `generic/P0`，用于百度和 Bing 的首轮全网发现；专业平台使用 `P1` 或 `P2`，按其对当前资源用途的独特贡献补充。执行层按优先级分波次运行，同一波次内并行。
 
 `task_id`、顶层 `strategy`、逐任务 `reason`、`intent_ref` 和所有汇总计数均无执行消费者，删除。平台分工和关键词差异应体现在任务与查询本身，不保存模型思考过程。
 

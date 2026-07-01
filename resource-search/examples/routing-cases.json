@@ -4,7 +4,7 @@
     {
       "id": "broad-topic",
       "intent": "想找一些火山科普学习资料",
-      "expect": {"principles": ["按内容贡献选择平台", "查询覆盖不同学习角度", "包含generic"]}
+      "expect": {"principles": ["generic作为第一个发现来源", "按资源用途设计互补查询", "专业平台只补充独特价值"]}
     },
     {
       "id": "audio-context",
@@ -14,7 +14,7 @@
     {
       "id": "visual-process",
       "intent": "想看植物种子发芽的过程",
-      "expect": {"principles": ["优先能呈现过程的平台", "查询覆盖观察和解释"]}
+      "expect": {"principles": ["generic先发现图文与可靠来源", "过程观察确有价值时再补充视频平台"]}
     },
     {
       "id": "practice-material",
@@ -29,7 +29,7 @@
     {
       "id": "explicit-platform",
       "intent": "在B站找天文纪录片",
-      "expect": {"principles": ["尊重明确平台", "generic仍作全网补充"]}
+      "expect": {"principles": ["generic仍为第一个全网发现任务", "尊重用户明确指定的B站并作为专业平台任务"]}
     },
     {
       "id": "excluded-form",
@@ -89,7 +89,7 @@
     {
       "id": "generic-required",
       "intent": "找一份亲子阅读活动方案",
-      "expect": {"principles": ["包含generic", "generic同时使用baidu和bing"]}
+      "expect": {"principles": ["generic位于任务第一项且为P0", "generic同时使用baidu和bing", "查询覆盖活动方案与亲子使用"]}
     }
   ]
 }

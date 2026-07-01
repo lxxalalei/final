@@ -73,6 +73,7 @@ def render(session_dir: Path, offset: int, limit: int) -> str:
         if resource.get("source_url"):
             lines.append(f"   链接：{resource['source_url']}")
         lines.append(f"   来源/类型：{platform} · {resource_type}")
+        lines.append(f"   用途：{review_item['resource_role']}")
         facts = known_facts(resource)
         if facts:
             lines.append(f"   已知信息：{'；'.join(facts)}")

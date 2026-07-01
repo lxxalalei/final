@@ -12,7 +12,7 @@ description: 学习资源平台搜索执行层。读取 resource-search 生成�
 本 Skill 只负责：
 
 - 根据私有搜索注册表加载平台 adapter。
-- 并行执行不同平台的任务。
+- 按优先级波次执行任务：先完成 P0 通用发现，再执行 P1/P2 专业平台补充；同一波次的平台并行。
 - 在同一平台内按顺序执行多条查询，避免并发触发限流。
 - 让 generic adapter 同时搜索百度和 Bing。
 - 处理平台超时、失败和部分成功。
@@ -35,11 +35,12 @@ python3 resource-platforms/scripts/run_search_plan.py \
 
 ### 并行规则
 
-1. 不同平台使用独立 worker 并行执行，并由注册表的 `max_concurrency` 限制总并发。
-2. 同一平台的 `searches[]` 默认串行。
-3. generic 内部并行请求百度和 Bing，再按规范化 URL 合并。
-4. 单个平台失败不得取消其他 worker。
-5. 所有 worker 完成或超时后一次性原子写入 Stage 3。
+1. 先执行 `P0` 波次；当前计划中它应当只有 generic。完成后依次执行 `P1`、`P2`。
+2. 同一波次的不同平台使用独立 worker 并行执行，并由注册表的 `max_concurrency` 限制总并发。
+3. 同一平台的 `searches[]` 默认串行。
+4. generic 内部并行请求百度和 Bing，再按规范化 URL 合并。
+5. 单个平台失败不得取消其他 worker。
+6. 所有 worker 完成或超时后一次性原子写入 Stage 3。
 
 ### Adapter 规则
 

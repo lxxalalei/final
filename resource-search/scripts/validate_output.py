@@ -143,6 +143,17 @@ def validate(document: dict[str, Any], catalog: dict[str, Any], intent: dict[str
 
     if generic_count != 1:
         errors.append(f"search_tasks 必须恰好包含一个 generic 任务，实际 {generic_count} 个")
+    else:
+        generic_task = next(
+            task for task in tasks if isinstance(task, dict) and task.get("platform") == "generic"
+        )
+        if not isinstance(tasks[0], dict) or tasks[0].get("platform") != "generic":
+            errors.append("generic 必须是 search_tasks 的第一个任务")
+        if generic_task.get("priority") != "P0":
+            errors.append("generic 任务的 priority 必须为 P0")
+        for index, task in enumerate(tasks):
+            if isinstance(task, dict) and task.get("platform") != "generic" and task.get("priority") == "P0":
+                errors.append(f"search_tasks[{index}] 专业平台不能使用 P0；P0 保留给首轮 generic")
     if intent is not None and intent.get("data", {}).get("status") != "ready":
         errors.append("不能为非 ready 的 intent 生成搜索计划")
     return errors

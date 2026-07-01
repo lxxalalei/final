@@ -89,7 +89,9 @@ class TestSemanticContracts(unittest.TestCase):
 
     def test_search_requires_generic_task(self) -> None:
         broken = copy.deepcopy(self.search)
-        broken["data"]["search_tasks"].pop()
+        broken["data"]["search_tasks"] = [
+            task for task in broken["data"]["search_tasks"] if task["platform"] != "generic"
+        ]
         self.assertTrue(any("恰好包含一个 generic" in error for error in search_validator.validate(broken, self.catalog, self.intent)))
 
     def test_generic_requires_baidu_and_bing(self) -> None:
@@ -115,9 +117,17 @@ class TestSemanticContracts(unittest.TestCase):
 
     def test_search_rejects_duplicate_platform_task(self) -> None:
         broken = copy.deepcopy(self.search)
-        broken["data"]["search_tasks"][1]["platform"] = "smartedu"
+        broken["data"]["search_tasks"][2]["platform"] = "smartedu"
         errors = search_validator.validate(broken, self.catalog, self.intent)
         self.assertTrue(any("平台任务重复" in error for error in errors))
+
+    def test_generic_must_be_first_and_p0(self) -> None:
+        broken = copy.deepcopy(self.search)
+        broken["data"]["search_tasks"][0], broken["data"]["search_tasks"][1] = (
+            broken["data"]["search_tasks"][1], broken["data"]["search_tasks"][0]
+        )
+        errors = search_validator.validate(broken, self.catalog, self.intent)
+        self.assertTrue(any("generic 必须" in error for error in errors))
 
     def test_search_rejects_duplicate_query_in_same_task(self) -> None:
         broken = copy.deepcopy(self.search)

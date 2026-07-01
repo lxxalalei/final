@@ -83,6 +83,29 @@ class TestPlatformSearchRunner(unittest.TestCase):
         self.assertEqual(result["_summary"]["failed_platforms"], ["bad"])
         self.assertEqual(result["data"]["errors"][0]["platform"], "bad")
 
+    def test_priority_waves_finish_p0_before_p1_starts(self) -> None:
+        events: list[str] = []
+
+        class RecordingAdapter(FakeAdapter):
+            def search(self, query: str, max_results: int, params: dict):
+                events.append(f"start:{self.platform}")
+                result = super().search(query, max_results, params)
+                events.append(f"end:{self.platform}")
+                return result
+
+        adapters = {"generic.py": RecordingAdapter("generic", 0.02), "video.py": RecordingAdapter("video", 0.01)}
+        runner.load_adapter = lambda entry: adapters[entry]
+        registry = {"platforms": {
+            "generic": {"status": "available", "entry": "generic.py", "timeout_seconds": 1},
+            "video": {"status": "available", "entry": "video.py", "timeout_seconds": 1},
+        }}
+        tasks = [
+            {"platform": "generic", "priority": "P0", "searches": [{"query": "discover", "max_results": 1}]},
+            {"platform": "video", "priority": "P1", "searches": [{"query": "demonstrate", "max_results": 1}]},
+        ]
+        asyncio.run(runner.run(self.plan(tasks), registry))
+        self.assertLess(events.index("end:generic"), events.index("start:video"))
+
     def test_registry_adapters_are_loadable(self) -> None:
         registry = json.loads((ROOT / "resource-platforms/config/search-registry.json").read_text(encoding="utf-8"))
         for platform, config in registry["platforms"].items():
