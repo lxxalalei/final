@@ -226,7 +226,7 @@ Search 读取 Stage 1。只有 `data.status=ready` 时才能写入计划。
       },
       {
         "platform": "smartedu",
-        "priority": "P1",
+        "priority": "P0",
         "searches": [
           {"query": "小学四年级 数学 同步课程", "max_results": 12}
         ]
@@ -254,7 +254,7 @@ Search 读取 Stage 1。只有 `data.status=ready` 时才能写入计划。
 | `searches[].max_results` | 是 | 1—100，控制本次搜索深度 |
 | `searches[].params` | 否 | 仅在平台真实接口需要额外参数时输出 |
 
-第一个任务固定为 `generic/P0`，用于百度和 Bing 的首轮全网发现；专业平台使用 `P1` 或 `P2`，按其对当前资源用途的独特贡献补充。执行层按优先级分波次运行，同一波次内并行。
+每份计划恰好包含一个 `generic/P0`，用于百度和 Bing 的跨站发现，但不要求它位于数组第一项。对当前需求有核心且独特价值的专业平台也可以使用 `P0` 并与 generic 同波并行；`P1` 用于明确补充，`P2` 用于较窄、探索性或运行可靠性较低的来源。执行层按优先级分波次运行，同一波次内并行。
 
 `task_id`、顶层 `strategy`、逐任务 `reason`、`intent_ref` 和所有汇总计数均无执行消费者，删除。平台分工和关键词差异应体现在任务与查询本身，不保存模型思考过程。
 

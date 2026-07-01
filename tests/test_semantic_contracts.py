@@ -136,13 +136,23 @@ class TestSemanticContracts(unittest.TestCase):
         errors = search_validator.validate(broken, self.catalog, self.intent)
         self.assertTrue(any("平台任务重复" in error for error in errors))
 
-    def test_generic_must_be_first_and_p0(self) -> None:
+    def test_generic_does_not_need_to_be_first(self) -> None:
         broken = copy.deepcopy(self.search)
         broken["data"]["search_tasks"][0], broken["data"]["search_tasks"][1] = (
             broken["data"]["search_tasks"][1], broken["data"]["search_tasks"][0]
         )
-        errors = search_validator.validate(broken, self.catalog, self.intent)
-        self.assertTrue(any("generic 必须" in error for error in errors))
+        self.assertEqual(search_validator.validate(broken, self.catalog, self.intent), [])
+
+    def test_generic_must_be_p0(self) -> None:
+        broken = copy.deepcopy(self.search)
+        generic = next(task for task in broken["data"]["search_tasks"] if task["platform"] == "generic")
+        generic["priority"] = "P1"
+        self.assertTrue(any("generic 任务" in error for error in search_validator.validate(broken, self.catalog, self.intent)))
+
+    def test_professional_platform_can_be_p0(self) -> None:
+        plan = copy.deepcopy(self.search)
+        next(task for task in plan["data"]["search_tasks"] if task["platform"] == "smartedu")["priority"] = "P0"
+        self.assertEqual(search_validator.validate(plan, self.catalog, self.intent), [])
 
     def test_search_rejects_duplicate_query_in_same_task(self) -> None:
         broken = copy.deepcopy(self.search)

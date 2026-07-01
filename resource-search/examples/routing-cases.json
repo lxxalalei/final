@@ -2,94 +2,157 @@
   "schema_version": "search-routing-golden/v1",
   "cases": [
     {
-      "id": "broad-topic",
-      "intent": "想找一些火山科普学习资料",
-      "expect": {"principles": ["generic作为第一个发现来源", "按资源用途设计互补查询", "专业平台只补充独特价值"]}
+      "id": "whole-primary-poetry",
+      "intent": "为孩子收集覆盖整个小学阶段的古诗学习资料",
+      "expect": {
+        "include": ["generic", "smartedu", "ximalaya", "bilibili"],
+        "exclude_unless_unique": ["zhihu", "douyin", "weibo", "open163"],
+        "principles": ["按篇目范围、原文注释、朗读和画面理解形成互补查询", "不把同一关键词机械复制到所有平台"]
+      }
     },
     {
-      "id": "audio-context",
-      "intent": "找适合路上听的英语故事",
-      "expect": {"principles": ["收听场景影响主力平台", "查询体现故事和连续收听"]}
+      "id": "primary-light-experiments",
+      "intent": "为小学生收集光主题的物理实验学习资料",
+      "expect": {
+        "include": ["generic", "bilibili", "smartedu"],
+        "principles": ["覆盖可靠实验说明、现象演示和相关课程", "不因短视频适配器存在就自动加入douyin"]
+      }
+    },
+    {
+      "id": "audio-album",
+      "intent": "找一套适合路上连续听的小学英语故事",
+      "expect": {
+        "include": ["generic", "ximalaya"],
+        "principles": ["ximalaya使用专辑方向与core=album", "收听场景影响预算而非只添加音频后缀"]
+      }
+    },
+    {
+      "id": "printable-practice",
+      "intent": "找可打印的小学分数加减法练习",
+      "expect": {
+        "include": ["generic"],
+        "principles": ["generic可使用文件格式或定向来源", "没有视觉讲解需求时不自动加入bilibili"]
+      }
+    },
+    {
+      "id": "broad-but-clarified",
+      "intent": "尽量全面收集整个小学阶段的数学学习资料",
+      "expect": {
+        "principles": ["先按小学数学内容结构拆分而不是堆资源形态", "增加互补内容切面和来源类型", "不平均搜索所有平台"]
+      }
     },
     {
       "id": "visual-process",
-      "intent": "想看植物种子发芽的过程",
-      "expect": {"principles": ["generic先发现图文与可靠来源", "过程观察确有价值时再补充视频平台"]}
-    },
-    {
-      "id": "practice-material",
-      "intent": "找分数加减法练习",
-      "expect": {"principles": ["覆盖练习材料", "可补充解题过程", "不虚构筛选参数"]}
-    },
-    {
-      "id": "learning-method",
-      "intent": "孩子读完文章抓不住重点，想找方法",
-      "expect": {"principles": ["查询覆盖方法解释和示范", "不同平台承担不同任务"]}
+      "intent": "想看植物种子发芽的连续过程",
+      "expect": {
+        "include": ["generic", "bilibili"],
+        "principles": ["过程观察由视频承担核心独特价值", "generic补充可靠说明和观察记录材料"]
+      }
     },
     {
       "id": "explicit-platform",
-      "intent": "在B站找天文纪录片",
-      "expect": {"principles": ["generic仍为第一个全网发现任务", "尊重用户明确指定的B站并作为专业平台任务"]}
+      "intent": "在B站找适合孩子看的天文纪录片",
+      "expect": {
+        "include": ["generic", "bilibili"],
+        "principles": ["尊重明确平台要求", "generic仍作为跨站基线但不必阻塞bilibili"]
+      }
     },
     {
-      "id": "excluded-form",
-      "intent": "不要视频，找阅读训练材料",
-      "expect": {"principles": ["排除与硬约束冲突的平台任务", "保留非视频召回方向"]}
+      "id": "excluded-video",
+      "intent": "不要视频，找小学阅读训练材料",
+      "expect": {
+        "exclude": ["bilibili", "douyin", "open163"],
+        "principles": ["排除与硬约束冲突的任务", "保留图文、练习和公共教育来源"]
+      }
     },
     {
-      "id": "preferred-form",
-      "intent": "想了解昆虫，最好有动画",
-      "expect": {"principles": ["动画作为偏好影响主力方向", "仍可保留其他有价值形态"]}
+      "id": "preferred-animation",
+      "intent": "想让孩子了解昆虫，最好有动画",
+      "expect": {
+        "include": ["generic", "bilibili"],
+        "principles": ["动画偏好提高视频方向优先级", "偏好不排除可靠图文和机构来源"]
+      }
     },
     {
       "id": "specific-file-format",
-      "intent": "找太阳系主题PPT课件",
-      "expect": {"principles": ["通用搜索可使用具体格式", "不向站内接口发送无效运算符"]}
+      "intent": "找太阳系主题PPT课件给孩子自学",
+      "expect": {
+        "include": ["generic"],
+        "principles": ["generic可使用filetype", "不向站内接口发送网页搜索运算符"]
+      }
     },
     {
-      "id": "open-form",
-      "intent": "找儿童情绪管理资源，形式不限",
-      "expect": {"principles": ["模型主动探索多种有效形态", "不平均搜索所有平台"]}
+      "id": "narrow-origami",
+      "intent": "找几个孩子能跟着做的折纸青蛙教程",
+      "expect": {
+        "include": ["generic", "bilibili"],
+        "principles": ["窄需求使用少量高贡献平台", "查询聚焦完整步骤和视觉示范"]
+      }
     },
     {
-      "id": "narrow-request",
-      "intent": "找几个折纸青蛙教程",
-      "expect": {"principles": ["窄需求使用少量高贡献平台", "查询聚焦步骤或演示"]}
-    },
-    {
-      "id": "exhaustive-request",
+      "id": "exhaustive-traffic-safety",
       "intent": "尽量全面收集儿童交通安全教育资源",
-      "expect": {"principles": ["增加互补内容角度和来源", "查询仍保持明确职责"]}
+      "expect": {
+        "principles": ["增加规则、场景、互动材料和机构来源等互补角度", "全面不等于加入所有平台"]
+      }
     },
     {
       "id": "explicit-stage",
-      "intent": "找初中物理浮力课程",
-      "expect": {"principles": ["保留明确学习阶段", "覆盖课程与现象解释"]}
+      "intent": "找初中物理浮力课程和实验演示",
+      "expect": {
+        "include": ["generic", "smartedu", "bilibili"],
+        "principles": ["保留明确学段", "课程和现象演示由最合适的平台分别承担"]
+      }
     },
     {
       "id": "explicit-edition",
       "intent": "找人教版五年级上册数学同步练习",
-      "expect": {"principles": ["保留明确版本与册次", "平台选择服从同步练习目标"]}
+      "expect": {
+        "principles": ["保留版本与册次", "优先结构化课程和可打印练习来源", "不自动扩展为学习方法"]
+      }
     },
     {
-      "id": "parent-perspective",
-      "intent": "家长怎么陪孩子练习口语",
-      "expect": {"principles": ["覆盖方法经验", "可补充可视化示范"]}
+      "id": "hands-on-home",
+      "intent": "找小学生能在家做的光影小实验",
+      "expect": {
+        "include": ["generic", "bilibili"],
+        "principles": ["覆盖操作说明与现象演示", "家庭场景进入查询但安全性留给下游核验"]
+      }
     },
     {
-      "id": "hands-on-activity",
-      "intent": "找能在家做的光影小实验",
-      "expect": {"principles": ["覆盖操作过程和活动说明", "查询考虑家庭场景"]}
-    },
-    {
-      "id": "source-preference",
+      "id": "authoritative-source-preference",
       "intent": "找儿童营养知识，优先权威来源",
-      "expect": {"principles": ["权威来源作为偏好扩展", "不把偏好误写成唯一来源"]}
+      "expect": {
+        "principles": ["generic优先发现政府、医院或专业机构来源", "prefer不被升级为排除其他来源"]
+      }
     },
     {
-      "id": "generic-required",
-      "intent": "找一份亲子阅读活动方案",
-      "expect": {"principles": ["generic位于任务第一项且为P0", "generic同时使用baidu和bing", "查询覆盖活动方案与亲子使用"]}
+      "id": "time-sensitive-museum",
+      "intent": "找这个暑假适合小学生参加的博物馆科学活动",
+      "expect": {
+        "principles": ["机构和时效线索可提高weibo的独特价值", "generic定向博物馆官方来源", "运行可靠性影响weibo优先级"]
+      }
+    },
+    {
+      "id": "deep-science-extension",
+      "intent": "给理解力较强的初中生找宇宙学拓展讲座和纪录片",
+      "expect": {
+        "principles": ["open163只在深度讲座或纪录片有独特价值时加入", "因适配器验证不足通常作为P2"]
+      }
+    },
+    {
+      "id": "generic-required-not-first",
+      "intent": "找小学科学声音传播的课程和演示",
+      "expect": {
+        "principles": ["恰好一个generic且为P0", "generic同时使用baidu和bing", "核心专业平台也可为P0并行", "任务数组顺序不表达依赖"]
+      }
+    },
+    {
+      "id": "zhihu-topic-background",
+      "intent": "为初中生收集丝绸之路历史背景与不同观点的拓展资料",
+      "expect": {
+        "principles": ["zhihu仅在专题背景或观点辨析有独特信息增益时加入", "不搜索学习方法或泛家长经验"]
+      }
     }
   ]
 }

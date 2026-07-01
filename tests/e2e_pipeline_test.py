@@ -45,7 +45,7 @@ def run_pipeline() -> list[dict]:
         },
         {
             "platform": "smartedu",
-            "priority": "P1",
+            "priority": "P0",
             "searches": [
                 {"query": "小学四年级 数学 同步课程", "max_results": 12},
                 {"query": "四年级数学 单元课程", "max_results": 12},
