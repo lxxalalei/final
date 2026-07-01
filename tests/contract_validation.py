@@ -158,8 +158,10 @@ class TestSkillPipelineContract(unittest.TestCase):
 
     def test_search_is_only_query_planner(self) -> None:
         search = read("resource-search/SKILL.md")
-        self.assertIn("去哪里搜、每处搜什么", search)
+        self.assertIn("多平台搜索计划", search)
+        self.assertIn("不执行搜索、筛选结果或下载资源", search)
         self.assertIn("config/platform-catalog.json", search)
+        self.assertIn("references/routing-rules.md", search)
         self.assertNotIn("../resource-platforms/config/search-registry.json", search)
         self.assertIn("searches[]", search)
         self.assertNotIn("coverage_plan", search)

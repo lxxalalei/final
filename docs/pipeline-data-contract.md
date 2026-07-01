@@ -336,6 +336,8 @@ Search 读取 Stage 1。只有 `data.status=ready` 时才能写入计划。
 
 ## 9. Stage 4：stage4_selection.json
 
+Selector 在等待用户选择期间可以在会话目录维护 `selector_input.json` 和 `selector_review.json`。它们是 Stage 4 私有工作文件，用于保存精确去重、逐条语义审查和稳定展示编号，不属于跨 Skill 数据契约；Downloader 和 Library Manager 不得读取。用户明确选择或取消后才生成正式 `stage4_selection.json`。
+
 Selector 同时读取 Stage 1 和 Stage 3。展示候选并得到用户选择后，只保存被选资源的引用和必要质量结论：
 
 ```json

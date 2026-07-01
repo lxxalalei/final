@@ -26,13 +26,14 @@ import os
 import re
 import sys
 import urllib.parse
+import urllib.error
 import urllib.request
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from shared.logger import getLogger
 
@@ -60,6 +61,27 @@ TYPE_MAP = {
 # ==========================
 
 
+class SearchError(RuntimeError):
+    def __init__(self, code: str, message: str, retryable: bool):
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+
+
+def runtime_cookie(explicit: str | None = None) -> str | None:
+    if explicit:
+        return explicit
+    direct = os.environ.get("ZHIHU_COOKIE", "").strip()
+    if direct:
+        return direct
+    cookie_file = os.environ.get("ZHIHU_COOKIE_FILE", "").strip()
+    if cookie_file:
+        path = Path(cookie_file).expanduser()
+        if path.is_file():
+            return path.read_text(encoding="utf-8-sig").strip()
+    return None
+
+
 def _get_auth_headers(cookie: str | None, token: str | None) -> dict[str, str]:
     """构建带认证的请求头。"""
     headers: dict[str, str] = {
@@ -70,12 +92,7 @@ def _get_auth_headers(cookie: str | None, token: str | None) -> dict[str, str]:
     }
     # 优先用显式传入的 token
     if token:
-        headers["Authorization"] = f"Bearer {token}"
-    elif cookie:
-        # 从 cookie 中提取 z_c0 作为 Bearer token
-        m = re.search(r"z_c0=([^;]+)", cookie)
-        if m:
-            headers["Authorization"] = f"Bearer {m.group(1)}"
+        headers["Authorization"] = token if token.lower().startswith("bearer ") else f"Bearer {token}"
     if cookie:
         headers["Cookie"] = cookie
     elif os.environ.get("ZHIHU_COOKIE"):
@@ -90,11 +107,11 @@ def search_via_api(
     max_results: int = 20,
 ) -> list[dict[str, Any]]:
     """通过知乎搜索 API 搜索。需要认证（z_c0 cookie 或 Bearer token）。"""
-    cookie = cookie or os.environ.get("ZHIHU_COOKIE")
+    cookie = runtime_cookie(cookie)
     token = token or os.environ.get("ZHIHU_TOKEN")
     headers = _get_auth_headers(cookie, token)
 
-    if "Authorization" not in headers:
+    if not cookie and not token:
         log.warning("缺少知乎认证信息（z_c0 cookie 或 token），无法调用搜索 API")
         return []
 
@@ -125,6 +142,16 @@ def search_via_api(
                     break
                 raw = resp.read().decode("utf-8")
                 data = json.loads(raw)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                raise SearchError("AUTH_REQUIRED", f"知乎搜索认证无效或已过期: HTTP {exc.code}", False) from exc
+            if exc.code == 429:
+                raise SearchError("SEARCH_BLOCKED", "知乎搜索触发频率限制", True) from exc
+            raise SearchError("SEARCH_EXECUTION_FAILED", f"知乎搜索 API 返回 HTTP {exc.code}", exc.code >= 500) from exc
+        except (TimeoutError, urllib.error.URLError) as exc:
+            raise SearchError("NETWORK_TIMEOUT", f"知乎搜索 API 请求失败: {exc}", True) from exc
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise SearchError("PARSE_FORMAT_NOT_SUPPORTED", f"知乎搜索响应解析失败: {exc}", False) from exc
         except Exception as exc:
             log.error("搜索 API 请求失败: %s", exc)
             break
@@ -269,7 +296,7 @@ def search_via_html(
 
     无 API 认证时使用。准确率较低，仅作为兜底。
     """
-    cookie = cookie or os.environ.get("ZHIHU_COOKIE")
+    cookie = runtime_cookie(cookie)
     headers: dict[str, str] = {
         "User-Agent": UA,
         "Accept": "text/html,application/xhtml+xml",
@@ -493,7 +520,12 @@ def search(
     return candidates
 
 
-def output_candidates(results: list[dict[str, Any]], keyword: str, output_file: str | None = None) -> dict[str, Any]:
+def output_candidates(
+    results: list[dict[str, Any]],
+    keyword: str,
+    output_file: str | None = None,
+    error: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """格式化为标准 candidate JSON 输出。"""
     data = {
         "candidate_schema": "learning-resource-candidate/v1",
@@ -501,6 +533,7 @@ def output_candidates(results: list[dict[str, Any]], keyword: str, output_file: 
         "query": keyword,
         "searched_at": datetime.now().isoformat(),
         "candidates": results,
+        "error": error,
     }
     output = json.dumps(data, ensure_ascii=False, indent=2)
     if output_file:
@@ -527,14 +560,27 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.cmd == "search":
-        results = search(
-            args.keyword,
-            cookie=args.cookie,
-            token=args.token,
-            max_results=args.max,
-        )
-        output_candidates(results, args.keyword, args.output)
-        return 0 if results else 1
+        cookie = runtime_cookie(args.cookie)
+        token = args.token or os.environ.get("ZHIHU_TOKEN")
+        try:
+            results = search(
+                args.keyword,
+                cookie=cookie,
+                token=token,
+                max_results=args.max,
+            )
+            error = None
+            if not results and not (cookie or token):
+                error = {
+                    "error_code": "AUTH_REQUIRED",
+                    "message": "知乎直接搜索需要 ZHIHU_COOKIE 或 ZHIHU_TOKEN",
+                    "retryable": False,
+                }
+        except SearchError as exc:
+            results = []
+            error = {"error_code": exc.code, "message": str(exc), "retryable": exc.retryable}
+        output_candidates(results, args.keyword, args.output, error)
+        return 1 if error else 0
 
     parser.print_help()
     return 1

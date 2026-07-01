@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
+import importlib.util
 import json
 import os
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +17,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 DEFAULT_REGISTRY = ROOT / "config" / "search-registry.json"
 
 
@@ -40,6 +45,32 @@ def load_adapter(entry: str):
     return adapter
 
 
+def check_runtime(config: dict[str, Any]) -> dict[str, Any] | None:
+    runtime = config.get("runtime") or {}
+    missing = [name for name in runtime.get("python_all", []) if importlib.util.find_spec(name) is None]
+    if missing:
+        return {
+            "error_code": "SYSTEM_DEPENDENCY_MISSING",
+            "message": f"缺少搜索依赖: {', '.join(missing)}",
+            "retryable": False,
+        }
+    alternatives = runtime.get("python_any", [])
+    if alternatives and not any(importlib.util.find_spec(name) is not None for name in alternatives):
+        return {
+            "error_code": "SYSTEM_DEPENDENCY_MISSING",
+            "message": f"至少需要一个搜索依赖: {', '.join(alternatives)}",
+            "retryable": False,
+        }
+    auth_env = runtime.get("auth_any_env", [])
+    if auth_env and not any(os.environ.get(name) for name in auth_env):
+        return {
+            "error_code": "AUTH_REQUIRED",
+            "message": f"需要运行时认证环境变量之一: {', '.join(auth_env)}",
+            "retryable": False,
+        }
+    return None
+
+
 async def execute_task(task: dict[str, Any], registry: dict[str, Any]) -> tuple[list[dict], list[dict]]:
     platform = task.get("platform")
     config = registry.get(platform) if isinstance(platform, str) else None
@@ -50,6 +81,9 @@ async def execute_task(task: dict[str, Any], registry: dict[str, Any]) -> tuple[
             "message": "平台未注册或当前不可执行",
             "retryable": False,
         }]
+    runtime_error = check_runtime(config)
+    if runtime_error:
+        return [], [{"platform": platform, **runtime_error}]
     try:
         adapter = load_adapter(config["entry"])
     except Exception as exc:

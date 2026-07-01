@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import os
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -87,6 +89,20 @@ class TestPlatformSearchRunner(unittest.TestCase):
             if config["status"] == "available":
                 adapter = self.original_loader(config["entry"])
                 self.assertEqual(adapter.platform_name, platform)
+
+    def test_runtime_dependency_failure_is_structured(self) -> None:
+        error = runner.check_runtime({"runtime": {"python_all": ["module_that_does_not_exist_lrs"]}})
+        self.assertEqual(error["error_code"], "SYSTEM_DEPENDENCY_MISSING")
+
+    def test_runtime_auth_failure_is_structured(self) -> None:
+        name = "LRS_TEST_AUTH_THAT_IS_NOT_SET"
+        old = os.environ.pop(name, None)
+        try:
+            error = runner.check_runtime({"runtime": {"auth_any_env": [name]}})
+        finally:
+            if old is not None:
+                os.environ[name] = old
+        self.assertEqual(error["error_code"], "AUTH_REQUIRED")
 
 
 if __name__ == "__main__":

@@ -19,12 +19,12 @@
 | `SEARCH_PLATFORM_UNAVAILABLE` | 平台未注册或不可执行 | 否 |
 | `SYSTEM_ADAPTER_LOAD_FAILED` | adapter 缺失或接口错误 | 否 |
 | `SYSTEM_TOOL_NOT_FOUND` | 平台脚本不存在 | 否 |
+| `SYSTEM_DEPENDENCY_MISSING` | 缺少平台搜索所需的 Python 依赖 | 否，先补运行环境 |
 | `NETWORK_TIMEOUT` | 请求超时 | 是 |
-| `ANTI_CRAWL_RATE_LIMITED` | 平台限流 | 是，延迟后 |
-| `ANTI_CRAWL_BLOCKED` | 验证码或访问拦截 | 否 |
-| `AUTH_LOGIN_REQUIRED` | 缺少必要登录状态 | 否，需用户处理 |
+| `SEARCH_BLOCKED` | 验证码、风控或搜索引擎访问拦截 | 是，更换会话或延迟后 |
+| `AUTH_REQUIRED` | 缺少必要 Cookie、Token 或登录会话 | 否，需补充运行时认证 |
 | `SEARCH_EXECUTION_FAILED` | 搜索脚本执行失败 | 视原因 |
 | `PARSE_EMPTY_CONTENT` | 没有可解析响应 | 否 |
 | `PARSE_FORMAT_NOT_SUPPORTED` | 响应格式无法解析 | 否 |
 
-单次有限重试由 adapter 处理。执行器只负责超时隔离，不叠加多轮重试。错误对象不得包含 Cookie、token、完整请求头或浏览器认证数据。
+单次有限重试由 adapter 处理。执行器只负责超时隔离，不叠加多轮重试。依赖和必需认证在联网前检查。错误对象不得包含 Cookie、token、完整请求头或浏览器认证数据。

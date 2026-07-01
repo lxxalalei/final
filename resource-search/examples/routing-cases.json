@@ -2,94 +2,94 @@
   "schema_version": "search-routing-golden/v1",
   "cases": [
     {
-      "id": "grade-four-math-course",
-      "intent": "四年级数学课程",
-      "expect": {"required_platforms": ["smartedu", "bilibili", "generic"], "query_angles": ["同步课程", "知识点讲解", "公开课程"]}
+      "id": "broad-topic",
+      "intent": "想找一些火山科普学习资料",
+      "expect": {"principles": ["按内容贡献选择平台", "查询覆盖不同学习角度", "包含generic"]}
     },
     {
-      "id": "audio-commute",
-      "intent": "路上听的古诗朗诵",
-      "expect": {"required_platforms": ["ximalaya", "generic"], "query_angles": ["朗诵", "音频专辑", "通勤听"]}
+      "id": "audio-context",
+      "intent": "找适合路上听的英语故事",
+      "expect": {"principles": ["收听场景影响主力平台", "查询体现故事和连续收听"]}
     },
     {
-      "id": "no-video",
-      "intent": "不要视频，找二年级阅读理解材料",
-      "expect": {"forbidden_platforms": ["bilibili", "douyin", "open163"], "required_platforms": ["generic"]}
+      "id": "visual-process",
+      "intent": "想看植物种子发芽的过程",
+      "expect": {"principles": ["优先能呈现过程的平台", "查询覆盖观察和解释"]}
     },
     {
-      "id": "science-mixed",
-      "intent": "适合10岁孩子的天文科普，视频和深度课程都可以",
-      "expect": {"required_platforms": ["bilibili", "generic"], "optional_platforms": ["open163"], "query_angles": ["动画讲解", "纪录片或课程"]}
+      "id": "practice-material",
+      "intent": "找分数加减法练习",
+      "expect": {"principles": ["覆盖练习材料", "可补充解题过程", "不虚构筛选参数"]}
     },
     {
       "id": "learning-method",
-      "intent": "孩子做应用题没有思路，想找方法讲解",
-      "expect": {"required_platforms": ["bilibili", "zhihu", "generic"], "query_angles": ["解题过程", "怎么教", "方法经验"]}
+      "intent": "孩子读完文章抓不住重点，想找方法",
+      "expect": {"principles": ["查询覆盖方法解释和示范", "不同平台承担不同任务"]}
     },
     {
-      "id": "short-demonstration",
-      "intent": "找几个乘法口诀快速记忆的小技巧短视频",
-      "expect": {"required_platforms_any": ["douyin", "bilibili"], "query_angles": ["快速记忆技巧", "短示范"]}
+      "id": "explicit-platform",
+      "intent": "在B站找天文纪录片",
+      "expect": {"principles": ["尊重明确平台", "generic仍作全网补充"]}
     },
     {
-      "id": "must-free",
-      "intent": "只要免费的英语启蒙资源",
-      "expect": {"generic_query_terms": ["免费"], "note": "平台不支持免费参数时不虚构参数，由 Selector 核验"}
+      "id": "excluded-form",
+      "intent": "不要视频，找阅读训练材料",
+      "expect": {"principles": ["排除与硬约束冲突的平台任务", "保留非视频召回方向"]}
     },
     {
-      "id": "planned-platform-request",
-      "intent": "想去百度文库找可打印课件",
-      "expect": {"forbidden_platforms": ["baiduwenku"], "required_platforms": ["generic"], "query_angles": ["site 定向或课件搜索"]}
+      "id": "preferred-form",
+      "intent": "想了解昆虫，最好有动画",
+      "expect": {"principles": ["动画作为偏好影响主力方向", "仍可保留其他有价值形态"]}
     },
     {
-      "id": "standard-narrow",
-      "intent": "推荐几个小学古诗动画",
-      "expect": {"required_platforms": ["bilibili", "generic"], "search_mode": "standard", "note": "窄需求不必凑满平台"}
+      "id": "specific-file-format",
+      "intent": "找太阳系主题PPT课件",
+      "expect": {"principles": ["通用搜索可使用具体格式", "不向站内接口发送无效运算符"]}
     },
     {
-      "id": "exhaustive-broad",
-      "intent": "尽量全面找儿童情绪管理资源",
-      "expect": {"search_mode": "exhaustive", "minimum_platforms": 3, "minimum_query_angles": 5}
+      "id": "open-form",
+      "intent": "找儿童情绪管理资源，形式不限",
+      "expect": {"principles": ["模型主动探索多种有效形态", "不平均搜索所有平台"]}
     },
     {
-      "id": "download-unavailable-not-search-unavailable",
-      "intent": "儿童故事音频",
-      "expect": {"required_platforms": ["ximalaya", "generic"], "note": "下载能力不影响搜索选择"}
+      "id": "narrow-request",
+      "intent": "找几个折纸青蛙教程",
+      "expect": {"principles": ["窄需求使用少量高贡献平台", "查询聚焦步骤或演示"]}
     },
     {
-      "id": "generic-search-mandatory",
-      "intent": "找可打印的科普活动方案",
-      "expect": {"required_platforms": ["generic"], "generic_engines": ["baidu", "bing"]}
+      "id": "exhaustive-request",
+      "intent": "尽量全面收集儿童交通安全教育资源",
+      "expect": {"principles": ["增加互补内容角度和来源", "查询仍保持明确职责"]}
     },
     {
-      "id": "general-primary-poetry",
-      "intent": "小学古诗学习",
-      "expect": {"required_platforms": ["ximalaya", "bilibili", "generic"], "query_angles": ["朗诵跟读", "动画赏析", "原文注释译文"], "forbid_automatic_dimensions": ["具体年级", "教材版本"]}
+      "id": "explicit-stage",
+      "intent": "找初中物理浮力课程",
+      "expect": {"principles": ["保留明确学习阶段", "覆盖课程与现象解释"]}
     },
     {
-      "id": "curriculum-primary-poetry",
-      "intent": "三年级语文上册古诗同步复习",
-      "expect": {"required_platforms": ["smartedu", "generic"], "query_angles": ["三年级语文上册", "同步复习"]}
+      "id": "explicit-edition",
+      "intent": "找人教版五年级上册数学同步练习",
+      "expect": {"principles": ["保留明确版本与册次", "平台选择服从同步练习目标"]}
     },
     {
-      "id": "open-form-dinosaur",
-      "intent": "找儿童恐龙科普，什么形式都可以",
-      "expect": {"required_platforms": ["bilibili", "generic"], "query_angles": ["动画", "灭绝原因", "博物馆或百科"]}
+      "id": "parent-perspective",
+      "intent": "家长怎么陪孩子练习口语",
+      "expect": {"principles": ["覆盖方法经验", "可补充可视化示范"]}
     },
     {
-      "id": "printable-not-pdf",
-      "intent": "找可打印的三年级数学练习题",
-      "expect": {"generic_query_terms": ["可打印"], "forbidden_inferred_terms": ["filetype:pdf"]}
+      "id": "hands-on-activity",
+      "intent": "找能在家做的光影小实验",
+      "expect": {"principles": ["覆盖操作过程和活动说明", "查询考虑家庭场景"]}
     },
     {
-      "id": "explicit-pdf",
-      "intent": "找三年级数学PDF试卷",
-      "expect": {"required_platforms": ["generic"], "generic_query_operators": ["filetype:pdf"]}
+      "id": "source-preference",
+      "intent": "找儿童营养知识，优先权威来源",
+      "expect": {"principles": ["权威来源作为偏好扩展", "不把偏好误写成唯一来源"]}
     },
     {
-      "id": "platform-query-language-differs",
-      "intent": "找三年级应用题解题方法",
-      "expect": {"smartedu_angle": "年级学科知识点", "bilibili_angle": "解题过程讲解", "zhihu_angle": "怎么教或方法经验", "generic_angle": "练习和其他站点资料"}
+      "id": "generic-required",
+      "intent": "找一份亲子阅读活动方案",
+      "expect": {"principles": ["包含generic", "generic同时使用baidu和bing"]}
     }
   ]
 }

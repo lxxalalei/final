@@ -1,13 +1,13 @@
-"""tests.test_dedup — 跨平台内容级去重引擎测试。
+"""Library Manager 内容级去重引擎测试。
 
 验证 shared/dedup.py 的三种去重策略和处理策略的正确性。
 
 运行方式::
 
     cd learning-resource-suite
-    python -m pytest tests/test_dedup.py -v
+    python -m pytest tests/test_library_dedup.py -v
     # 或直接运行
-    python tests/test_dedup.py
+    python tests/test_library_dedup.py
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Selector owns cross-platform content deduplication.
+# Library Manager owns downloaded-file and library-index deduplication.
 _project_root = Path(__file__).resolve().parent.parent
-_scripts_dir = _project_root / "resource-selector" / "scripts"
+_scripts_dir = _project_root / "library-manager" / "scripts"
 if str(_scripts_dir) not in sys.path:
     sys.path.insert(0, str(_scripts_dir))
 

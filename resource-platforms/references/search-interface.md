@@ -28,7 +28,11 @@ Platform 不修改查询，不从 Intent 补充条件。
 
 `raw_metadata` 只保存后续阶段确实需要且没有标准字段承载的信息，不倾倒完整平台响应。
 
+`platform_signals` 只保留播放、点赞、评论、收藏、认证、集数等平台事实。平台脚本自行推算的质量分或等级不得进入 Stage 3，最终质量判断由 Selector 完成。
+
 失败时 `results=[]` 并返回统一 `error`。部分结果可用时允许同时返回结果和错误。
+
+运行依赖和认证环境变量由 `config/search-registry.json` 声明。Stage 2 只传搜索参数，不传 Cookie、Token、请求头或浏览器状态。
 
 ## Stage 3
 

@@ -8,8 +8,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import html
 import json
+import os
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote_plus, unquote, urlparse
@@ -96,6 +98,23 @@ def parse_bing_results(page: str, query: str, limit: int) -> list[dict[str, Any]
     return results
 
 
+def parse_bing_rss(page: str, query: str, limit: int) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    try:
+        root = ET.fromstring(page)
+    except ET.ParseError:
+        return results
+    for item in root.findall("./channel/item"):
+        title = _clean_text(item.findtext("title") or "")
+        url = _canonical_url(item.findtext("link") or "")
+        snippet = _clean_text(item.findtext("description") or "")
+        if title and url:
+            results.append(_make_result(title, url, snippet, "bing", len(results) + 1, query))
+        if len(results) >= limit:
+            break
+    return results
+
+
 def parse_baidu_results(page: str, query: str, limit: int) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     blocks = re.findall(
@@ -126,8 +145,11 @@ def parse_baidu_results(page: str, query: str, limit: int) -> list[dict[str, Any
     return results
 
 
-def _fetch(url: str, timeout: float) -> str:
-    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6"})
+def _fetch(url: str, timeout: float, cookie: str = "") -> str:
+    headers = {"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.6"}
+    if cookie:
+        headers["Cookie"] = cookie
+    request = Request(url, headers=headers)
     with urlopen(request, timeout=timeout) as response:
         body = response.read()
         charset = response.headers.get_content_charset() or "utf-8"
@@ -150,12 +172,34 @@ def search(query: str, engines: list[str], limit: int, timeout: float) -> dict[s
     errors: list[dict[str, str]] = []
     per_engine_limit = max(limit, 1)
     endpoints = {
-        "bing": (f"https://www.bing.com/search?q={quote_plus(query)}&count={per_engine_limit}", parse_bing_results),
         "baidu": (f"https://www.baidu.com/s?wd={quote_plus(query)}&rn={per_engine_limit}", parse_baidu_results),
     }
     def run_engine(engine: str) -> tuple[str, list[dict[str, Any]]]:
+        if engine == "bing":
+            cookie = os.environ.get("BING_COOKIE", "") or "SRCHHPGUSR=SRCHLANG=zh-Hans"
+            html_url = (
+                f"https://cn.bing.com/search?q={quote_plus(query)}"
+                f"&count={per_engine_limit}&setlang=zh-hans&cc=CN"
+            )
+            html_blocked = False
+            try:
+                page = _fetch(html_url, timeout, cookie)
+                _raise_if_blocked(page, engine)
+                html_results = parse_bing_results(page, query, per_engine_limit)
+                if html_results:
+                    return engine, html_results
+            except SearchBlockedError:
+                html_blocked = True
+            rss_url = f"https://cn.bing.com/search?format=rss&q={quote_plus(query)}&count={per_engine_limit}"
+            rss_page = _fetch(rss_url, timeout, cookie)
+            _raise_if_blocked(rss_page, engine)
+            rss_results = parse_bing_rss(rss_page, query, per_engine_limit)
+            if html_blocked and not rss_results:
+                raise SearchBlockedError("bing HTML 与 RSS 搜索均不可用")
+            return engine, rss_results
         url, parser = endpoints[engine]
-        page = _fetch(url, timeout)
+        cookie = os.environ.get(f"{engine.upper()}_COOKIE", "")
+        page = _fetch(url, timeout, cookie)
         _raise_if_blocked(page, engine)
         return engine, parser(page, query, per_engine_limit)
 

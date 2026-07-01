@@ -72,6 +72,11 @@ CRITICAL_FILES = [
     "resource-platforms/config/search-registry.json",
     "resource-platforms/scripts/run_search_plan.py",
     "resource-selector/references/quality-rubric.md",
+    "resource-selector/scripts/prepare_candidates.py",
+    "resource-selector/scripts/validate_review.py",
+    "resource-selector/scripts/render_review.py",
+    "resource-selector/scripts/finalize_selection.py",
+    "library-manager/scripts/dedup.py",
     "resource-intent/schemas/input.schema.json",
     "resource-intent/schemas/output.schema.json",
     "resource-intent/scripts/validate_output.py",
@@ -409,13 +414,10 @@ def check_platform_registry() -> list[CheckResult]:
         return results
 
     sync_errors = []
-    required_planning_fields = {
-        "planning_status", "resource_types", "content_forms", "file_formats", "auth",
-        "strengths", "limitations", "query_profile",
-    }
+    required_planning_fields = {"planning_status", "auth", "search_parameters"}
     for platform_id, planning in catalog_platforms.items():
         execution = platforms[platform_id]
-        if not isinstance(planning, dict) or not required_planning_fields.issubset(planning):
+        if not isinstance(planning, dict) or set(planning) != required_planning_fields:
             sync_errors.append(f"{platform_id}: 规划字段不完整")
             continue
         if planning["planning_status"] != execution.get("status"):

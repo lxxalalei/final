@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Weibo search adapter. The legacy mixed CLI is invoked only with search."""
+"""Weibo search-only adapter."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ class WeiboSearchAdapter(CLISearchAdapter):
 
     platform_name = "weibo"
 
-    search_script = SCRIPTS_DIR / "weibo" / "weibo_dl.py"
+    search_script = SCRIPTS_DIR / "weibo" / "weibo_search.py"
 
 
 ADAPTER = WeiboSearchAdapter()

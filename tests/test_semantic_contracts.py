@@ -136,13 +136,10 @@ class TestSemanticContracts(unittest.TestCase):
             if entry["status"] == "available":
                 self.assertTrue((ROOT / "resource-platforms" / entry["entry"]).is_file(), platform)
 
-    def test_search_catalog_describes_semantics_and_real_parameters(self) -> None:
+    def test_search_catalog_contains_only_execution_facts(self) -> None:
         for platform, entry in self.catalog["platforms"].items():
             self.assertNotIn("entry", entry, platform)
-            self.assertIn("strengths", entry, platform)
-            self.assertIn("limitations", entry, platform)
-            self.assertIn("query_profile", entry, platform)
-            self.assertIn("search_parameters", entry, platform)
+            self.assertEqual(set(entry), {"planning_status", "auth", "search_parameters"}, platform)
 
     def test_search_catalog_and_platform_registry_are_author_synced(self) -> None:
         catalog_platforms = self.catalog["platforms"]

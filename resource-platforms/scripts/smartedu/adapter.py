@@ -25,7 +25,7 @@ class SmartEduSearchAdapter(CLISearchAdapter):
             sys.executable, str(self.search_script),
             "search-resources",
             "--query", query,
-            "--max", str(max_results),
+            "--limit", str(max_results),
             "-o", str(output_file),
         ]
         return cmd

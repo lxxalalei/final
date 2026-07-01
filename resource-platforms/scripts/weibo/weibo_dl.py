@@ -64,8 +64,19 @@ def _extract_mid_from_md(content: str) -> str:
 # Cookie Loader
 # ============================================================
 
-def load_cookies(cookie_path: str) -> str:
-    """Load cookie string from file."""
+def load_cookies(cookie_path: str | None) -> str:
+    """Load cookies from an explicit file or the runtime environment."""
+    if not cookie_path:
+        cookies = os.environ.get("WEIBO_COOKIE", "").strip()
+        if cookies:
+            if "SUB=" not in cookies:
+                log.error("WEIBO_COOKIE does not contain SUB cookie (login required)")
+                sys.exit(1)
+            return cookies
+        cookie_path = os.environ.get("WEIBO_COOKIE_FILE")
+    if not cookie_path:
+        log.error("Weibo search requires WEIBO_COOKIE or WEIBO_COOKIE_FILE")
+        sys.exit(1)
     p = Path(cookie_path)
     # Try workspace-relative paths
     if not p.is_absolute():
@@ -380,7 +391,6 @@ def search_weibo(keyword: str, cookie_str: str, max_results: int = 20) -> list[d
 
     需要有效的 SUB cookie。
     """
-    client = WeiboClient(cookie_str)
     all_candidates: list[dict] = []
     seen_mids: set[str] = set()
     page = 1
@@ -388,7 +398,15 @@ def search_weibo(keyword: str, cookie_str: str, max_results: int = 20) -> list[d
     while len(all_candidates) < max_results:
         log.info("搜索微博 (page %d): '%s'...", page, keyword)
         try:
-            data = client.search(keyword, page=page, count=10)
+            params = urllib.parse.urlencode({"q": keyword, "page": page, "count": 10})
+            request = urllib.request.Request(
+                f"{API_BASE}/searchall?{params}",
+                headers=make_headers(cookie_str),
+            )
+            with urllib.request.urlopen(request, timeout=15) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            if data.get("ok") == -100:
+                raise PermissionError("Cookie expired (got -100). Please re-login.")
         except PermissionError as e:
             log.error("%s", e)
             break
@@ -1277,7 +1295,7 @@ def main():
     sp = sub.add_parser("search", help="搜索微博内容")
     sp.add_argument("keyword", help="搜索关键词")
     sp.add_argument("--max", type=int, default=20, help="最大返回数（默认 20）")
-    sp.add_argument("--cookie", default="weibo_cookies.txt", help="Cookie 文件路径 (默认: weibo_cookies.txt)")
+    sp.add_argument("--cookie", default=None, help="Cookie 文件路径；优先使用 WEIBO_COOKIE/WEIBO_COOKIE_FILE")
     sp.add_argument("-o", "--output", default=None, help="输出 candidate JSON 文件路径")
 
     # 兼容旧用法：无子命令时走 download 逻辑

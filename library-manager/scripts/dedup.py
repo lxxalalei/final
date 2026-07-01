@@ -1,4 +1,4 @@
-"""Selector-owned cross-platform content deduplication engine.
+"""Library Manager content and index deduplication engine.
 
 提供三种互补的去重策略，按优先级自动组合使用：
 

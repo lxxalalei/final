@@ -104,43 +104,56 @@ class F2Engine:
     不需要浏览器，不需要 CDP。
     """
     def __init__(self):
-        self._ttwid = None
-        self._msToken = None
-        self._webid = None
-        self._cookie_str = None
+        cookie = os.environ.get("DOUYIN_COOKIE", "").strip()
+        cookie_file = os.environ.get("DOUYIN_COOKIE_FILE", "").strip()
+        if not cookie and cookie_file:
+            path = Path(cookie_file).expanduser()
+            if path.is_file():
+                cookie = path.read_text(encoding="utf-8-sig").strip()
+        self._cookie_str = cookie
+        self._ttwid = self._cookie_value("ttwid")
+        self._msToken = self._cookie_value("msToken")
+        self._webid = self._cookie_value("s_v_web_id")
+
+    def _cookie_value(self, name):
+        match = re.search(rf"(?:^|;\s*){re.escape(name)}=([^;]+)", self._cookie_str or "")
+        return match.group(1) if match else ""
 
     def ensure_tokens(self):
         """确保所有 token 已生成"""
-        if self._ttwid:
+        if self._ttwid and self._msToken:
             return
         from f2.apps.douyin.utils import TokenManager
 
         log.info("[f2] 生成 Token...")
-        try:
-            self._ttwid = TokenManager.gen_ttwid()
-            log.info("ttwid: ...%s", self._ttwid[-20:])
-        except Exception as e:
-            log.warning("ttwid 失败: %s", e)
-            self._ttwid = ""
+        if not self._ttwid:
+            try:
+                self._ttwid = TokenManager.gen_ttwid()
+                log.info("ttwid 已生成")
+            except Exception as e:
+                log.warning("ttwid 失败: %s", e)
+                self._ttwid = ""
 
-        try:
-            self._msToken = TokenManager.gen_real_msToken()
-            log.info("msToken: ...%s", self._msToken[-20:])
-        except Exception as e:
-            log.warning("真实 msToken 失败，使用伪造版: %s", e)
-            self._msToken = TokenManager.gen_false_msToken()
+        if not self._msToken:
+            try:
+                self._msToken = TokenManager.gen_real_msToken()
+                log.info("msToken 已生成")
+            except Exception as e:
+                log.warning("真实 msToken 失败，使用伪造版: %s", e)
+                self._msToken = TokenManager.gen_false_msToken()
 
-        try:
-            self._webid = TokenManager.gen_webid()
-        except:
-            self._webid = ""
+        if not self._webid:
+            try:
+                self._webid = TokenManager.gen_webid()
+            except:
+                self._webid = ""
 
-        parts = []
-        if self._ttwid:
+        parts = [self._cookie_str] if self._cookie_str else []
+        if self._ttwid and "ttwid=" not in (self._cookie_str or ""):
             parts.append(f"ttwid={self._ttwid}")
-        if self._msToken:
+        if self._msToken and "msToken=" not in (self._cookie_str or ""):
             parts.append(f"msToken={self._msToken}")
-        self._cookie_str = "; ".join(parts)
+        self._cookie_str = "; ".join(part for part in parts if part)
 
     def sign_url(self, endpoint, params):
         """ABogus 签名"""

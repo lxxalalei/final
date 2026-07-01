@@ -54,6 +54,8 @@ search(query: str, max_results: int, params: dict) -> {
 
 adapter 负责把统一参数转换为平台真实调用，并把平台响应转换为公共搜索资源。认证只能从运行环境、配置或浏览器会话读取，不能写入搜索计划、结果或日志。
 
+Cookie、Token、浏览器状态路径和 CDP 地址只使用注册表及平台文档声明的环境变量。不得把认证信息放进 `searches[].params` 或命令行中的明文参数。缺少依赖或必需认证时，必须在联网前返回结构化错误。
+
 ## 结果边界
 
 每条有效资源至少提供：
@@ -82,4 +84,4 @@ adapter 负责把统一参数转换为平台真实调用，并把平台响应转
 - `config/search-registry.json`：平台状态、adapter、认证方式和超时。
 - `references/search-interface.md`：adapter 与 Stage 3 的搜索数据说明。
 - `references/search-errors.md`：搜索错误及重试边界。
-- `references/platforms/{platform}.md`：只有该平台执行失败或需要认证时读取。
+- `references/platforms/{platform}.md`：正常批量搜索不预加载。某个平台认证失败、连续空结果、接口或解析异常时，读取对应文件后诊断；测试、修改或新增该平台搜索实现前也必须读取。不要为一个平台的问题加载其他平台文档。

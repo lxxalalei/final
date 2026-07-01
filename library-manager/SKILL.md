@@ -49,7 +49,7 @@ Stage 5→6 的 envelope、归档结果和引用规则以 `../docs/pipeline-data
 3. 规范化 `source_url` 一致。
 4. 标题、作者、时长或文件信息高度相似。
 
-实现入口为 `../resource-selector/scripts/dedup.py`。无法确认时不要静默删除，可以标记并保留。
+实现入口为 `scripts/dedup.py`。无法确认时不要静默删除，可以标记并保留。
 
 发现重复时按配置决定保留现有、替换、合并元数据或跳过；因重复跳过时记录 `duplicate_of`。
 
@@ -140,4 +140,4 @@ Stage 5→6 的 envelope、归档结果和引用规则以 `../docs/pipeline-data
 
 - `../docs/pipeline-data-contract.md`：Stage 6 权威数据契约。
 - `references/library-structure.md`：目录、命名、附属文件、备份和空间管理。
-- `../resource-selector/scripts/dedup.py`：当前复用的内容去重实现；Library 阶段后续可拆出自己的索引去重器。
+- `scripts/dedup.py`：下载文件指纹、URL、标题和资料库索引去重实现。

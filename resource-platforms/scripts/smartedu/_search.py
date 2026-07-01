@@ -330,7 +330,7 @@ def search_item_to_candidate(item: dict[str, Any], query: str, filters: dict[str
         "source": "smartedu",
         "source_name": "国家中小学智慧教育平台",
         "source_url": source_url,
-        "resource_id": f"smartedu-search:{resource_id}",
+        "resource_id": f"smartedu:{resource_id}",
         "title": title,
         "description": clean_html_text(first_value(item, ["description", "summary", "intro", "content", "snippet", "global_description"])),
         "resource_type": norm(first_value(item, ["resource_type_name", "resourceTypeName", "content_type_name", "contentTypeName"])) or resource_type_for(fmt, {}, item),
@@ -354,6 +354,12 @@ def search_item_to_candidate(item: dict[str, Any], query: str, filters: dict[str
             "warnings": ["搜索结果候选尚未解析详情文件项"],
         },
     }
+    visit_count = first_value(item, ["visit_count", "visitCount", "view_count", "viewCount"])
+    if isinstance(visit_count, (int, float)):
+        candidate["platform_signals"] = {"views": int(visit_count)}
+    publish_time = norm(first_value(item, ["publish_time", "publishTime", "create_time", "createTime"] ))
+    if publish_time:
+        candidate["publish_time"] = publish_time
     candidate["metadata_confidence"] = metadata_confidence(candidate)
     return candidate
 

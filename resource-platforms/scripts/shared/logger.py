@@ -145,20 +145,18 @@ class SanitizingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """对日志记录的消息进行脱敏处理。"""
-        if not isinstance(record.msg, str):
-            return True
-
-        sanitized = record.msg
+        # Third-party libraries commonly keep secrets in formatting args
+        # (for example httpx logs a complete signed URL as ``%s``). Sanitize
+        # the fully rendered message rather than only the format template.
+        sanitized = record.getMessage()
         for p1, p2 in self._PATTERNS:
             # 先处理引号包裹的值
             sanitized = p2.sub(r'\1"***REDACTED***"', sanitized)
             # 再处理裸值
             sanitized = p1.sub(r"\1***REDACTED***", sanitized)
 
-        if sanitized != record.msg:
-            record.msg = sanitized
-            # 清除已格式化的 args（防止二次格式化不一致）
-            record.args = None
+        record.msg = sanitized
+        record.args = None
 
         return True
 
@@ -271,6 +269,8 @@ def configure_logging(
         root.removeHandler(h)
 
     root.setLevel(level_val)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     # ── stderr handler（默认） ──────────────────────────
     if output_val in ("stderr", "both"):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Douyin search adapter. The legacy mixed CLI is invoked only with search."""
+"""Douyin search-only adapter."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ class DouyinSearchAdapter(CLISearchAdapter):
 
     platform_name = "douyin"
 
-    search_script = SCRIPTS_DIR / "douyin" / "douyin_dl.py"
+    search_script = SCRIPTS_DIR / "douyin" / "douyin_search.py"
 
 
 ADAPTER = DouyinSearchAdapter()
