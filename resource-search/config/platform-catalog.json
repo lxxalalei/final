@@ -5,7 +5,9 @@
       "planning_status": "available",
       "auth": "optional",
       "search_parameters": {
-        "engines": {"type": "array", "allowed": ["baidu", "bing"], "required_values": ["baidu", "bing"]}
+        "engines": {"type": "string", "allowed": ["web", "global", "china", "dev", "all"], "description": "引擎预设：web=baidu+bing, global=bing+duckduckgo, china=baidu+bing+duckduckgo, dev=github+jina, all=全部"},
+        "site": {"type": "string", "description": "限定站点域名"},
+        "site_pack": {"type": "string", "allowed": ["kepu", "cctv", "poetry", "textbook", "museum", "library"]}
       }
     },
     "bilibili": {
@@ -46,6 +48,20 @@
       "planning_status": "available",
       "auth": "optional",
       "search_parameters": {}
+    },
+    "wechat": {
+      "planning_status": "available",
+      "auth": "optional",
+      "search_parameters": {
+        "resolve_url": {"type": "boolean", "description": "解析微信文章真实URL"}
+      }
+    },
+    "anna": {
+      "planning_status": "available",
+      "auth": "optional",
+      "search_parameters": {
+        "content": {"type": "string", "allowed": ["book", "article"]}
+      }
     },
     "baiduwenku": {
       "planning_status": "planned",

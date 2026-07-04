@@ -52,6 +52,9 @@ def validate(selector_input: dict[str, Any], review: dict[str, Any]) -> list[str
         reasons = item.get("reasons")
         if not isinstance(reasons, list) or not reasons or not all(isinstance(value, str) and value.strip() for value in reasons):
             errors.append(f"{prefix}.reasons 必须是非空字符串数组")
+        summary = item.get("summary")
+        if summary is not None and (not isinstance(summary, str) or not summary.strip()):
+            errors.append(f"{prefix}.summary 如果存在必须是非空字符串")
         notes = item.get("notes", [])
         if not isinstance(notes, list) or not all(isinstance(value, str) and value.strip() for value in notes):
             errors.append(f"{prefix}.notes 必须是字符串数组")

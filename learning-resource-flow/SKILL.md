@@ -138,7 +138,7 @@ Stage 1 只能读取该快照，不依赖未持久化的聊天上下文。Flow �
 ### Stage 4：筛选并让用户选择
 
 - 第一次调用 `resource-selector` 时只传递绝对 `{session_dir}`。Selector 读取 Stage 1 和 Stage 3，写入私有 `selector_input.json`、`selector_review.json`，完成业务过滤、评分和排序后返回候选展示；此时不得创建 `stage4_selection.json`。
-- 将 stage 4 标记为 `waiting_user`，把 Selector 返回的候选和选择说明原样展示给用户，然后结束当前轮次。
+- 将 stage 4 标记为 `waiting_user`，把 Selector 返回的候选和选择说明**原样展示**给用户，不得改写为 markdown 表格或其他格式，然后结束当前轮次。
 - 用户回复后，把选择原话和同一 `{session_dir}` 交回 Selector。Selector 必须复用已有 review，不重新搜索或评分；只有明确选择或取消后才输出 `stage4_selection.json`。
 - 输出存在后校验 `_summary.status` 和 `_summary.selected_count`，再将 stage 4 标记为 `completed` 或 `cancelled`。
 - 没有合格候选时，提供放宽条件、换关键词或扩大平台范围的选项；不要进入下载阶段。

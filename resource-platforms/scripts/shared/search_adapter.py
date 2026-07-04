@@ -68,6 +68,8 @@ class CLISearchAdapter(SearchAdapter):
                     cmd,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=self.timeout_seconds,
                     env=self._subprocess_env(),
                     check=False,
@@ -179,7 +181,7 @@ class CLISearchAdapter(SearchAdapter):
         result.update({key: value for key, value in mapping.items() if value is not None and value != ""})
         allowed_signals = {
             "comments", "engine", "favorites", "is_verified", "lessons", "likes",
-            "plays", "rank", "rating", "shares", "tracks_count", "views",
+            "plays", "rank", "rating", "shares", "stars", "forks", "tracks_count", "views",
         }
         source_signals = item.get("platform_signals") or {}
         signals = {
@@ -214,11 +216,11 @@ class CLISearchAdapter(SearchAdapter):
         if not isinstance(raw, dict):
             return {}
         # Legacy platform CLIs often place the complete response under `raw`.
-        # Stage 3 only keeps stable identifiers needed to reopen the resource.
+        # Keep only stable identifiers needed to reopen or archive the resource.
         allowed = {
             "bid", "bvid", "catalog", "category_id", "core", "detail_page",
-            "mid", "pid", "rank", "search_method", "smartedu_catalog",
-            "sub_catalog", "video_id",
+            "engine", "github_full_name", "github_id", "mid", "pid", "query",
+            "rank", "search_method", "smartedu_catalog", "sub_catalog", "video_id",
         }
         return {
             key: value

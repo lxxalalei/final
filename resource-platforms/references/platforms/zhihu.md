@@ -7,7 +7,7 @@
 - 认证：必须提供 `ZHIHU_COOKIE`、`ZHIHU_COOKIE_FILE` 或 `ZHIHU_TOKEN`
 - 计划参数：当前只使用关键词和 `max_results`
 
-Cookie应至少包含有效登录态；文件保存原始Cookie字符串。Token可传纯值或完整Bearer值。认证信息只从环境读取。
+优先保存浏览器请求头中的整段 Cookie；直连知乎搜索 API 至少需要 `z_c0` 和 `d_c0`。单独 `z_c0` 会被 `doctor` 判定为不完整。文件保存原始Cookie字符串。Token可传纯值或完整Bearer值。认证信息只从环境读取。
 
 ## 搜索路径
 
@@ -21,6 +21,7 @@ API单页最多20条，按offset翻页直到达到 `max_results`。直接脚本�
 
 支持文章、回答、问题和话题等类型，输出标题、真实知乎地址、摘要、作者、发布时间，以及点赞、评论等平台信号。搜索引擎降级结果元数据较少，但必须保留真实知乎地址。
 
+- HTTP 400 且响应包含 `HitLabels`：`AUTH_REQUIRED`，通常表示 Cookie 不完整，先检查是否同时包含 `z_c0` 和 `d_c0`。
 - HTTP 401/403：`AUTH_REQUIRED`。
 - HTTP 429：`SEARCH_BLOCKED`，允许稍后重试。
 - 页面抓取常见403；缺少认证时Platform会在联网前返回`AUTH_REQUIRED`。

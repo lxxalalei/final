@@ -1,15 +1,26 @@
 {
   "schema_version": "platform-search-registry/v1",
   "max_concurrency": 4,
+  "groups": {
+    "learning": ["generic", "smartedu", "bilibili", "ximalaya"],
+    "web": ["generic", "open163", "wechat", "anna"],
+    "video": ["bilibili", "douyin"],
+    "audio": ["ximalaya"],
+    "social": ["zhihu", "weibo", "douyin", "wechat"],
+    "available": ["generic", "bilibili", "ximalaya", "smartedu", "zhihu", "douyin", "weibo", "open163", "wechat", "anna"],
+    "all": ["generic", "bilibili", "ximalaya", "smartedu", "zhihu", "douyin", "weibo", "open163", "wechat", "anna"]
+  },
   "platforms": {
-    "generic": {"status": "available", "auth": "optional", "entry": "scripts/generic/adapter.py", "timeout_seconds": 30, "runtime": {"optional_auth_env": ["BAIDU_COOKIE", "BING_COOKIE"]}},
+    "generic": {"status": "available", "auth": "optional", "entry": "scripts/generic/adapter.py", "timeout_seconds": 45, "runtime": {"python_optional": ["httpx", "requests", "dotenv", "lxml", "bs4"], "optional_auth_env": ["BAIDU_COOKIE", "BING_COOKIE", "DUCKDUCKGO_COOKIE", "JINA_API_KEY", "GITHUB_TOKEN", "GH_TOKEN"]}},
     "bilibili": {"status": "available", "auth": "optional", "entry": "scripts/bilibili/adapter.py", "timeout_seconds": 45, "runtime": {"optional_auth_env": ["BILIBILI_COOKIE", "BILIBILI_COOKIE_FILE"]}},
     "ximalaya": {"status": "available", "auth": "optional", "entry": "scripts/ximalaya/adapter.py", "timeout_seconds": 45, "runtime": {"optional_auth_env": ["XIMALAYA_COOKIE"]}},
-    "smartedu": {"status": "available", "auth": "optional", "entry": "scripts/smartedu/adapter.py", "timeout_seconds": 90, "runtime": {"optional_auth_env": ["SMARTEDU_ACCESS_TOKEN", "SMARTEDU_COOKIE", "SMARTEDU_AUTHORIZATION", "SMARTEDU_HEADERS"]}},
-    "zhihu": {"status": "available", "auth": "required", "entry": "scripts/zhihu/adapter.py", "timeout_seconds": 45, "runtime": {"auth_any_env": ["ZHIHU_COOKIE", "ZHIHU_COOKIE_FILE", "ZHIHU_TOKEN"]}},
-    "douyin": {"status": "available", "auth": "required", "entry": "scripts/douyin/adapter.py", "timeout_seconds": 45, "runtime": {"python_all": ["f2"], "auth_any_env": ["DOUYIN_COOKIE", "DOUYIN_COOKIE_FILE"]}},
+    "smartedu": {"status": "available", "auth": "optional", "entry": "scripts/smartedu/adapter.py", "timeout_seconds": 90, "runtime": {"python_optional": ["playwright"], "optional_auth_env": ["SMARTEDU_ACCESS_TOKEN", "SMARTEDU_COOKIE", "SMARTEDU_AUTHORIZATION", "SMARTEDU_HEADERS"]}},
+    "zhihu": {"status": "available", "auth": "required", "entry": "scripts/zhihu/adapter.py", "timeout_seconds": 45, "runtime": {"auth_any_env": ["ZHIHU_COOKIE", "ZHIHU_COOKIE_FILE", "ZHIHU_TOKEN"], "cookie_requirements": {"ZHIHU_COOKIE": ["z_c0=", "d_c0="], "ZHIHU_COOKIE_FILE": ["z_c0=", "d_c0="]}}},
+    "douyin": {"status": "available", "auth": "required", "entry": "scripts/douyin/adapter.py", "timeout_seconds": 45, "runtime": {"python_all": ["f2", "httpx"], "python_optional": ["gmssl", "playwright", "playwright_stealth"], "auth_any_env": ["DOUYIN_COOKIE", "DOUYIN_COOKIE_FILE"]}},
     "weibo": {"status": "available", "auth": "required", "entry": "scripts/weibo/adapter.py", "timeout_seconds": 60, "runtime": {"auth_any_env": ["WEIBO_COOKIE", "WEIBO_COOKIE_FILE"]}},
     "open163": {"status": "available", "auth": "optional", "entry": "scripts/open163/adapter.py", "timeout_seconds": 45, "runtime": {"optional_auth_env": ["OPEN163_COOKIE"]}},
+    "wechat": {"status": "available", "auth": "optional", "entry": "scripts/wechat/adapter.py", "timeout_seconds": 75, "runtime": {"executables_all": ["node"], "node_all": ["cheerio"], "optional_auth_env": ["SOGOU_WEIXIN_COOKIE"]}},
+    "anna": {"status": "available", "auth": "optional", "entry": "scripts/anna/adapter.py", "timeout_seconds": 75, "runtime": {"optional_auth_env": ["ANNAS_BASE_URL", "ANNAS_AUTO_BASE_URL", "ANNAS_FALLBACK", "ANNAS_FALLBACK_ENGINES", "BING_COOKIE", "DUCKDUCKGO_COOKIE", "JINA_API_KEY"]}},
     "baiduwenku": {"status": "planned", "auth": "unknown", "entry": null},
     "xiaohongshu": {"status": "planned", "auth": "unknown", "entry": null},
     "cctv": {"status": "planned", "auth": "unknown", "entry": null}

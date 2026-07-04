@@ -1,12 +1,27 @@
 # 平台搜索接口
 
-## 上游任务
+## 任务输入
 
-每个平台任务包含 `platform`、`priority` 和一个或多个 `searches`。每次调用包含 `query`、`max_results`，以及平台真实支持时才出现的 `params`。
+每个平台任务包含 `platform` 和一个或多个 `searches`。每次搜索包含 `query`、`max_results`，以及平台真实支持时才出现的 `params`。
 
-Platform 不修改查询，不从 Intent 补充条件。
+```json
+{
+  "platform": "bilibili",
+  "searches": [
+    {
+      "query": "四年级数学 小数 讲解",
+      "max_results": 10,
+      "params": {}
+    }
+  ]
+}
+```
+
+平台搜索只执行已经给出的查询。查询扩展、方向拆分、资源选择、下载和归档由调用方或其他工具处理。
 
 ## Adapter 返回
+
+每个平台 adapter 导出 `ADAPTER.search(query, max_results, params)`，返回：
 
 ```json
 {
@@ -24,36 +39,34 @@ Platform 不修改查询，不从 Intent 补充条件。
 }
 ```
 
-资源必填字段只有 `resource_id`、`platform`、`title`、`source_url`。可选字段已知时才输出：`type`、`description`、`author`、`duration`、`publish_time`、`is_free`、`language`、`thumbnail_url`、`download_feasibility`、`platform_signals`、`raw_metadata`。
+资源必填字段为 `platform`、`title`、`source_url`；能稳定提供时同时输出 `resource_id`。可选字段已知时才输出：`type`、`description`、`author`、`duration`、`publish_time`、`is_free`、`language`、`thumbnail_url`、`download_feasibility`、`platform_signals`、`raw_metadata`。
 
-`raw_metadata` 只保存后续阶段确实需要且没有标准字段承载的信息，不倾倒完整平台响应。
+`platform_signals` 只保留播放、点赞、评论、收藏、认证、集数、站内排名等平台事实。不要把脚本推算的相关性、适龄性、质量等级写成资源结论。
 
-`platform_signals` 只保留播放、点赞、评论、收藏、认证、集数等平台事实。平台脚本自行推算的质量分或等级不得进入 Stage 3，最终质量判断由 Selector 完成。
+`raw_metadata` 只保存后续重开页面、下载或排查所需的少量稳定字段，不倾倒完整平台响应。
 
-失败时 `results=[]` 并返回统一 `error`。部分结果可用时允许同时返回结果和错误。
+失败时返回 `results=[]` 和统一 `error`。部分结果可用时允许同时返回结果和错误。
 
-运行依赖和认证环境变量由 `config/search-registry.json` 声明。Stage 2 只传搜索参数，不传 Cookie、Token、请求头或浏览器状态。
+运行依赖和认证环境变量由 `config/search-registry.json` 声明。任务输入只传搜索参数，不传 Cookie、Token、请求头或浏览器状态。
 
-## Stage 3
+## CLI 汇总输出
 
-执行器把所有 adapter 响应汇总到：
+`scripts/search_cli.py` 和 `scripts/search_core.py` 汇总所有 adapter 响应：
 
 ```json
 {
-  "_meta": {
-    "schema_version": "platform-results/v1",
-    "session_id": "继承 Stage 2",
-    "created_at": "ISO 8601"
-  },
-  "_summary": {
-    "resource_count": 1,
-    "failed_platforms": []
-  },
+  "success": true,
+  "duration_ms": 1200,
   "data": {
     "resources": [],
-    "errors": []
+    "errors": [],
+    "summary": {
+      "task_count": 1,
+      "resource_count": 0,
+      "failed_platforms": []
+    }
   }
 }
 ```
 
-Platform 只能做平台内精确去重。跨平台相似判断、相关性过滤和质量评分由 Selector 完成。
+执行器只做平台内精确去重和错误隔离。跨平台相似判断、人工取舍、质量判断和下载归档应在外部完成。

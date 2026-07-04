@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -45,6 +46,16 @@ def runtime_cookie() -> str:
     return path.read_text(encoding="utf-8-sig").strip()
 
 
+def _urlopen_with_cert_fallback(request: urllib.request.Request, timeout: float):
+    try:
+        return urllib.request.urlopen(request, timeout=timeout)
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        if not isinstance(reason, ssl.SSLCertVerificationError) and "CERTIFICATE_VERIFY_FAILED" not in str(exc):
+            raise
+        return urllib.request.urlopen(request, timeout=timeout, context=ssl._create_unverified_context())
+
+
 def request_json(url: str, *, referer: str, cookie: str, timeout: int) -> dict[str, Any]:
     headers = {
         "User-Agent": USER_AGENT,
@@ -55,7 +66,7 @@ def request_json(url: str, *, referer: str, cookie: str, timeout: int) -> dict[s
         headers["Cookie"] = cookie
     request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _urlopen_with_cert_fallback(request, timeout=timeout) as response:
             content_type = response.headers.get("Content-Type", "")
             body = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:

@@ -1,0 +1,25 @@
+# platform-search 运行依赖。
+# 安装：
+#   python -m pip install -r requirements.txt
+#   python -m playwright install chromium
+
+# 通用 HTTP / 解析 / 配置
+httpx
+requests
+python-dotenv
+lxml
+beautifulsoup4
+PyYAML
+
+# 抖音签名与浏览器会话
+f2
+gmssl
+playwright
+playwright-stealth
+
+# B 站 API 辅助工具
+bilibili-api-python
+
+# SmartEdu / 归档相关视频解密兼容依赖
+pycryptodome
+cryptography

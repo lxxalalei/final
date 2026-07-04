@@ -9,7 +9,7 @@
 - 认证：公开搜索通常无需登录；可选 `BILIBILI_COOKIE` 或 `BILIBILI_COOKIE_FILE`
 - 计划参数：当前只使用关键词和 `max_results`
 
-Cookie 文件保存浏览器请求头中的原始 Cookie 字符串。认证信息只从运行环境读取，不进入搜索计划、Stage 3 或日志。
+Cookie 文件保存浏览器请求头中的原始 Cookie 字符串。认证信息只从运行环境读取，不进入任务输入、搜索结果或日志。
 
 ## 搜索路径
 

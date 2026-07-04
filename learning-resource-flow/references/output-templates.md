@@ -2,17 +2,50 @@
 
 ## Stage 4：候选展示
 
+### 默认（平铺模式）
+
 ```text
 搜索执行完成：{success_platform_count} 个平台成功，{failed_platform_count} 个失败。
 原始有效结果 {raw_count} 条；去重 {duplicates_removed} 条；业务过滤 {business_filtered} 条；合格候选 {candidate_count} 条。
 
-1. {title}
-   来源：{platform} · 类型：{type} · 质量：{quality_level}（{quality_score}）
-   下载可行性：{download_feasibility}
-   说明：{assessment_summary}
+1. 🏷️ [{quality_level}级 · {quality_score}分] {title}
+   📝 {summary}
+   {type_icon} 来源：【{platform}】{type} · {free_status}
+   🔗 {source_url}
 
-请输入编号、筛选条件、“全部”或“查看更多”。确认后才会下载。
+请输入编号、筛选条件、"全部"或"查看更多"。确认后才会下载。
 ```
+
+### 分组模式（按资源类型）
+
+当用户要求按类型分组展示时，使用以下格式。编号必须与 selector_review.json 顺序一致。
+
+```text
+搜索执行完成：{success_platform_count} 个平台成功，{failed_platform_count} 个失败。
+原始有效结果 {raw_count} 条；去重 {duplicates_removed} 条；业务过滤 {business_filtered} 条；合格候选 {candidate_count} 条。
+
+🎬 视频资源（{count} 条）
+
+1. 🏷️ [{quality_level}级 · {quality_score}分] {title}
+   📝 {summary}
+   {type_icon} 来源：【{platform}】{type} · {free_status}
+   🔗 {source_url}
+
+🎵 音频资源（{count} 条）
+
+3. 🏷️ [{quality_level}级 · {quality_score}分] {title}
+   📝 {summary}
+   {type_icon} 来源：【{platform}】{type} · {free_status}
+   🔗 {source_url}
+
+📄 文档资源（{count} 条）
+
+...
+
+请输入编号、筛选条件、"全部"或"取消"。
+```
+
+分组顺序：视频资源 → 音频资源 → 文档资源 → 习题资源 → 课程资源 → 网页资源
 
 平台失败必须单独说明，不要合并到过滤数量。
 

@@ -21,7 +21,10 @@
 | `SYSTEM_TOOL_NOT_FOUND` | 平台脚本不存在 | 否 |
 | `SYSTEM_DEPENDENCY_MISSING` | 缺少平台搜索所需的 Python 依赖 | 否，先补运行环境 |
 | `NETWORK_TIMEOUT` | 请求超时 | 是 |
+| `NETWORK_ERROR` | DNS、连接失败或证书等网络错误 | 是 |
+| `NETWORK_HTTP_ERROR` | 上游 HTTP 5xx 等临时错误 | 是 |
 | `SEARCH_BLOCKED` | 验证码、风控或搜索引擎访问拦截 | 是，更换会话或延迟后 |
+| `SEARCH_RATE_LIMITED` | 上游限流或配额不足 | 是，降低频率或补充凭证 |
 | `AUTH_REQUIRED` | 缺少必要 Cookie、Token 或登录会话 | 否，需补充运行时认证 |
 | `SEARCH_EXECUTION_FAILED` | 搜索脚本执行失败 | 视原因 |
 | `PARSE_EMPTY_CONTENT` | 没有可解析响应 | 否 |

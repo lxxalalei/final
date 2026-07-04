@@ -9,7 +9,7 @@ description: 学习资源候选筛选与用户选择 Skill。读取 Intent 与 P
 
 把 Stage 3 的原始召回变成一组真正适合当前需求、可解释且便于用户选择的候选。这里依赖模型理解语义，不把标题关键词命中、平台热度或固定字段数量当成质量判断。
 
-本 Skill 负责跨平台去重、业务过滤、媒介中立的质量评分、组合式展示和用户选择交接。
+本 Skill 负责跨平台去重、业务过滤、统一质量评分、排序展示和用户选择交接。
 
 读取：
 
@@ -37,14 +37,14 @@ python3 resource-selector/scripts/prepare_candidates.py {session_dir}
 
 ### 2. 重新理解需求
 
-完整阅读 Intent 的 `clarified_need`，并用 `evidence` 和 `requirements` 校验，不要从标题关键词重新猜测用户需求。明确：
+完整阅读 Intent，不要只拿 `core_topic` 做字符串匹配。明确：
 
 - 用户真正要学习什么、用于什么场景。
 - 年龄、年级、难度和学习目标。
 - 明确要求的形态、文件类型、语言、来源、免费或版本条件。
 - 哪些是硬约束，哪些只是偏好，哪些完全没有要求。
 
-用户没有限制形态时，允许任何能有效支持学习目标的资源进入候选，并按实际用途评价。
+用户没有限制形态时，视频、音频、图文和课程可以共同进入候选；不要自行把某种形式设为唯一正确答案。
 
 ### 3. 逐条语义审查
 
@@ -53,27 +53,19 @@ python3 resource-selector/scripts/prepare_candidates.py {session_dir}
 先判断是否过滤：
 
 - 资源本身是否在教、练或解释当前主题，而不是只碰巧包含某个词。
-- 学段、难度和目标人群是否与 Intent 一致。
-- 标题和现有描述是否提供足够证据，来源可信度不能替代内容匹配证据。
+- 学段和难度是否明显冲突。例如“四年级数学”不能保留“高等数学课程”。
+- 标题和现有描述是否提供足够证据。只有“练习四”且没有年级、学科证据时，不能仅因平台权威而推定相关。
 - 是否含成人、色情、暴力、诈骗、危险模仿或其他儿童不宜内容。儿童安全冲突直接过滤。
 - 是否违反免费、语言、文件格式或来源等硬约束。
 - 是否为空页面、广告、失效链接或无法定位的内容。
 
-所有来源使用同一套相关性、安全性和质量标准。平台信号只在能证明某个评价维度时作为证据。
+搜索引擎可能返回完全偏题甚至儿童不宜的结果；不要因为它来自 generic 就降低过滤标准。平台热度只能证明受关注，不能证明相关、适龄或教学质量。
 
-保留后按照 `references/quality-rubric.md` 评分。先评价资源本身对当前任务的质量，再安排展示顺序；二者不是同一件事。评分理由必须引用当前资源已有证据，例如来源、标题所示内容、作者、免费状态或信息缺失；不得编造内容、答案、字幕、教材版本、可打印性和下载能力。
-
-数量、时长、热度和元数据丰富度只作为描述性证据；只有它们能直接支持当前学习目标时才影响评分。未知字段保持中性，不因平台字段结构差异改变评价标准。
-
-### 4. 组织有用的候选组合
-
-评分后安排展示顺序。第一项通常是最能解决核心需求且证据较充分的资源；后续优先补充不同的 `resource_role`、使用方式或来源，使前列候选共同覆盖当前任务。
-
-多样性本身不产生价值：资源仍需满足相关性和质量要求。用户明确限定资源范围时，在该范围内组织最有用的候选组合。
+保留后按照 `references/quality-rubric.md` 评分。评分理由必须引用当前资源已有证据，例如官方来源、标题所示册次、课时数、作者、免费状态或信息缺失；不得编造内容、答案、字幕、教材版本、可打印性和下载能力。
 
 `possible_duplicates` 只是提示。只有能确认是同一内容或同一课程镜像时才去重；相似但版本、册次、教师或媒介不同的资源应分别保留。
 
-### 5. 写入模型审查
+### 4. 写入模型审查
 
 写入 `{session_dir}/selector_review.json`：
 
@@ -90,15 +82,15 @@ python3 resource-selector/scripts/prepare_candidates.py {session_dir}
         "resource_id": "bilibili:BV1example",
         "relevance": "high",
         "quality_score": 82,
-        "resource_role": "概念理解",
-        "reasons": ["标题明确覆盖当前学习主题", "内容说明显示包含分步讲解"],
-        "notes": ["具体内容范围需打开确认"]
+        "summary": "用一句话总结这个资源是什么、适合谁、有什么特点",
+        "reasons": ["标题明确覆盖小学四年级数学上下册", "系列课程信息完整"],
+        "notes": ["教材版本需用户确认"]
       }
     ],
     "excluded": [
       {
         "resource_id": "generic:example",
-        "reason": "与当前学习目标无关"
+        "reason": "与四年级数学无关，且包含儿童不宜内容"
       }
     ]
   }
@@ -108,10 +100,10 @@ python3 resource-selector/scripts/prepare_candidates.py {session_dir}
 要求：
 
 - 每个预处理候选恰好出现在 `candidates` 或 `excluded` 一次。
-- `resource_role` 用简短自然语言说明该资源在当前候选组合中的用途，例如“核心说明”“练习巩固”“朗读示范”“家长陪伴”。
-- `quality_score` 表示资源自身质量；`candidates` 数组顺序表示展示顺序，允许为补充不同用途而不是严格按分数降序。
+- `candidates` 按 `quality_score` 降序排列，这个顺序就是展示编号。
 - 保留项只使用 `high` 或 `medium` 相关性；低相关直接过滤。
 - `quality_score` 低于 40 的资源不得保留。
+- `summary`：用一句话（不超过50字）总结这个资源是什么、适合谁或有什么特点。基于标题、描述和已知信息生成，不要照搬原文，不要编造不存在的内容。每个候选都必须有 `summary`。
 - `reasons` 服务用户理解推荐依据；`notes` 只记录真正影响选择的未知或风险。
 
 运行：
@@ -124,17 +116,17 @@ python3 resource-selector/scripts/validate_review.py \
 
 校验失败时根据错误修复一次。不要通过删除未审查资源绕过校验。
 
-### 6. 展示并暂停
+### 5. 展示并暂停
 
 运行：
 
 ```bash
-python3 resource-selector/scripts/render_review.py {session_dir} --limit 10
+python3 resource-selector/scripts/render_review.py {session_dir}
 ```
 
-渲染器按照 `references/display-templates.md` 生成稳定编号。先说明原始数量、精确去重数、过滤数、合格数和平台错误；每条只展示已知事实、评分等级、理由和风险。
+渲染器默认按资源类型分组展示（视频 → 音频 → 文档 → 习题 → 课程 → 网页），每组以 `{type_icon} {category_name}（{count} 条）` 标题起始。每条候选严格四行格式，以 emoji 引导。详细格式见 `references/display-templates.md`。
 
-把候选列表和选择说明原样返回 Flow，由 Flow 将 Stage 4 标记为 `waiting_user` 并向用户展示。本轮停止，不调用 Downloader，不生成 Stage 4。
+**必须原样使用渲染器输出的文本**，不得改写为 markdown 表格、精简格式或其他排版。把渲染器输出和选择说明原样返回 Flow，由 Flow 将 Stage 4 标记为 `waiting_user` 并向用户展示。本轮停止，不调用 Downloader，不生成 Stage 4。
 
 ## 第二次调用：处理用户选择
 
@@ -162,7 +154,7 @@ python3 resource-selector/scripts/finalize_selection.py \
 - 不生成搜索词，不调用平台接口。
 - 不下载或探测下载链接。
 - 不把未知信息推断成确定事实。
-- 平台信号只有能证明当前评价维度时才影响评分。
+- 不因平台名气或播放量直接给高分。
 - 不在用户确认前生成选择结果。
 
 ## 按需读取

@@ -5,7 +5,7 @@
   1. 优先用知乎搜索 API（需要 z_c0 Cookie / Authorization Bearer token）
   2. 无认证信息时降级为通用 HTTP 页面抓取 + 解析，返回有限结果
 
-输出由 adapter 归一化，接口见 resource-platforms/references/search-interface.md：
+输出由 adapter 归一化，接口见 platform-search/references/search-interface.md：
   resource_id / title / source_url / platform 为必填字段。
 
 用法:
@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import ssl
 import sys
 import urllib.parse
 import urllib.error
@@ -43,6 +44,7 @@ log = getLogger("zhihu")
 SEARCH_API = "https://www.zhihu.com/api/v4/search_v3"
 SEARCH_PAGE_URL = "https://www.zhihu.com/search"
 ZHIHU_BASE = "https://www.zhihu.com"
+ZHIHU_ZHUANLAN_BASE = "https://zhuanlan.zhihu.com"
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -68,6 +70,31 @@ class SearchError(RuntimeError):
         self.retryable = retryable
 
 
+def _public_zhihu_url(obj_type: str, obj: dict[str, Any], resource_id: str) -> str:
+    if obj_type == "answer":
+        question = obj.get("question") if isinstance(obj.get("question"), dict) else {}
+        qid = question.get("id") or ""
+        return f"{ZHIHU_BASE}/question/{qid}/answer/{resource_id}" if qid else ""
+    if obj_type == "article":
+        return f"{ZHIHU_ZHUANLAN_BASE}/p/{resource_id}" if resource_id else ""
+    if obj_type == "question":
+        return f"{ZHIHU_BASE}/question/{resource_id}" if resource_id else ""
+
+    raw_url = str(obj.get("url") or "")
+    raw_url = raw_url.replace("https://api.zhihu.com/articles/", f"{ZHIHU_ZHUANLAN_BASE}/p/")
+    return raw_url
+
+
+def _urlopen_with_cert_fallback(req: urllib.request.Request, timeout: float):
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        if not isinstance(reason, ssl.SSLCertVerificationError) and "CERTIFICATE_VERIFY_FAILED" not in str(exc):
+            raise
+        return urllib.request.urlopen(req, timeout=timeout, context=ssl._create_unverified_context())
+
+
 def runtime_cookie(explicit: str | None = None) -> str | None:
     if explicit:
         return explicit
@@ -82,12 +109,12 @@ def runtime_cookie(explicit: str | None = None) -> str | None:
     return None
 
 
-def _get_auth_headers(cookie: str | None, token: str | None) -> dict[str, str]:
+def _get_auth_headers(cookie: str | None, token: str | None, referer: str | None = None) -> dict[str, str]:
     """构建带认证的请求头。"""
     headers: dict[str, str] = {
         "User-Agent": UA,
         "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.zhihu.com/",
+        "Referer": referer or "https://www.zhihu.com/",
         "x-requested-with": "fetch",
     }
     # 优先用显式传入的 token
@@ -109,7 +136,8 @@ def search_via_api(
     """通过知乎搜索 API 搜索。需要认证（z_c0 cookie 或 Bearer token）。"""
     cookie = runtime_cookie(cookie)
     token = token or os.environ.get("ZHIHU_TOKEN")
-    headers = _get_auth_headers(cookie, token)
+    referer = f"{SEARCH_PAGE_URL}?{urllib.parse.urlencode({'q': keyword})}"
+    headers = _get_auth_headers(cookie, token, referer=referer)
 
     if not cookie and not token:
         log.warning("缺少知乎认证信息（z_c0 cookie 或 token），无法调用搜索 API")
@@ -117,26 +145,23 @@ def search_via_api(
 
     candidates: list[dict[str, Any]] = []
     offset = 0
-    limit = min(max_results, 20)
+    # Zhihu's current web endpoint is sensitive to large page sizes with raw
+    # cookies. Keep page size small and paginate to satisfy larger requests.
+    limit = min(max_results, 5)
     search_type = "content"
 
     while len(candidates) < max_results:
         params = {
-            "t": "general",
             "q": keyword,
-            "correction": "1",
             "offset": str(offset),
             "limit": str(limit),
-            "show_all_topics": "0",
-            "search_source": "Filter",
-            "type": search_type,
         }
         url = f"{SEARCH_API}?{urllib.parse.urlencode(params)}"
         log.info("搜索 API 调用: offset=%d limit=%d", offset, limit)
 
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with _urlopen_with_cert_fallback(req, timeout=15) as resp:
                 if resp.status != 200:
                     log.warning("搜索 API 返回 HTTP %d", resp.status)
                     break
@@ -145,6 +170,15 @@ def search_via_api(
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 raise SearchError("AUTH_REQUIRED", f"知乎搜索认证无效或已过期: HTTP {exc.code}", False) from exc
+            if exc.code == 400:
+                body = exc.read(500).decode("utf-8", errors="replace")
+                if "HitLabels" in body:
+                    raise SearchError(
+                        "AUTH_REQUIRED",
+                        "知乎 Cookie 不完整或缺少 d_c0；请复制浏览器请求头里的整段 Cookie，至少包含 z_c0 和 d_c0",
+                        False,
+                    ) from exc
+                raise SearchError("SEARCH_EXECUTION_FAILED", f"知乎搜索 API 返回 HTTP 400: {body[:120]}", False) from exc
             if exc.code == 429:
                 raise SearchError("SEARCH_BLOCKED", "知乎搜索触发频率限制", True) from exc
             raise SearchError("SEARCH_EXECUTION_FAILED", f"知乎搜索 API 返回 HTTP {exc.code}", exc.code >= 500) from exc
@@ -182,13 +216,14 @@ def search_via_api(
 
 def _parse_search_item(obj: dict[str, Any], raw_item: dict[str, Any]) -> dict[str, Any] | None:
     """解析单条搜索结果为标准 candidate。"""
+    highlight = raw_item.get("highlight") if isinstance(raw_item.get("highlight"), dict) else {}
     obj_type = str(obj.get("type") or raw_item.get("type") or "").lower()
     resource_id = str(obj.get("id") or "")
 
     # 构建标题
     title = (
         obj.get("title")
-        or raw_item.get("highlight", {}).get("title")
+        or highlight.get("title")
         or obj.get("name")
         or "无标题"
     )
@@ -196,23 +231,14 @@ def _parse_search_item(obj: dict[str, Any], raw_item: dict[str, Any]) -> dict[st
     title = re.sub(r"<[^>]+>", "", title).strip()
 
     # 构建 URL
-    source_url = ""
-    if obj_type == "answer":
-        qid = obj.get("question", {}).get("id") or ""
-        source_url = f"{ZHIHU_BASE}/question/{qid}/answer/{resource_id}" if qid else ""
-    elif obj_type == "article":
-        source_url = obj.get("url") or f"{ZHIHU_BASE}/p/{resource_id}"
-    elif obj_type == "question":
-        source_url = f"{ZHIHU_BASE}/question/{resource_id}"
-    else:
-        source_url = obj.get("url") or ""
+    source_url = _public_zhihu_url(obj_type, obj, resource_id)
 
     if not source_url or not title:
         return None
 
     # 摘要
     snippet_raw = (
-        raw_item.get("highlight", {}).get("content")
+        highlight.get("content")
         or obj.get("excerpt")
         or obj.get("content")
         or ""
@@ -311,7 +337,7 @@ def search_via_html(
 
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen_with_cert_fallback(req, timeout=15) as resp:
             html = resp.read().decode("utf-8", errors="replace")
     except Exception as exc:
         log.error("页面抓取失败: %s", exc)
@@ -363,6 +389,10 @@ def search_via_websearch(keyword: str, max_results: int = 20) -> list[dict[str, 
     """
     log.info("WebSearch 兜底: '%s'", keyword)
 
+    candidates = _search_via_generic(keyword, max_results)
+    if candidates:
+        return candidates
+
     # 尝试 Bing
     candidates = _search_via_bing(keyword, max_results)
     if candidates:
@@ -371,6 +401,59 @@ def search_via_websearch(keyword: str, max_results: int = 20) -> list[dict[str, 
     # Bing 无结果，尝试百度
     log.info("Bing 无知乎结果，尝试百度...")
     candidates = _search_via_baidu(keyword, max_results)
+    return candidates
+
+
+def _search_via_generic(keyword: str, max_results: int) -> list[dict[str, Any]]:
+    """通过 generic 多引擎搜索发现知乎公开链接。"""
+    try:
+        from generic.generic_search import search as generic_search
+    except Exception as exc:
+        log.warning("generic 搜索不可用，继续使用旧兜底: %s", exc)
+        return []
+
+    try:
+        response = generic_search(
+            keyword,
+            ["bing", "duckduckgo", "baidu"],
+            max(max_results * 2, 5),
+            10.0,
+            site="zhihu.com",
+        )
+    except Exception as exc:
+        log.warning("generic 搜索失败，继续使用旧兜底: %s", exc)
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for item in response.get("results", []):
+        if not isinstance(item, dict):
+            continue
+        clean_url = str(item.get("source_url") or "").split("#")[0].rstrip("/")
+        if "zhihu.com/" not in clean_url or clean_url in seen_urls:
+            continue
+        seen_urls.add(clean_url)
+        is_answer = "/question/" in clean_url
+        resource_id = clean_url.rstrip("/").rsplit("/", 1)[-1]
+        candidates.append({
+            "resource_id": resource_id,
+            "title": item.get("title") or f"知乎{'问答' if is_answer else '文章'} {resource_id}",
+            "source_url": clean_url,
+            "source_platform": "zhihu",
+            "source": "zhihu-content",
+            "source_name": "知乎",
+            "snippet": item.get("description") or "",
+            "format": "md",
+            "resource_type": "问答" if is_answer else "文章",
+            "provider": "",
+            "downloadable": True,
+            "requires_auth": False,
+            "metadata_confidence": 0.45,
+            "raw": {"search_method": "generic_search_fallback"},
+        })
+        if len(candidates) >= max_results:
+            break
+    log.info("generic 兜底返回 %d 条知乎候选", len(candidates))
     return candidates
 
 
@@ -385,7 +468,7 @@ def _search_via_bing(keyword: str, max_results: int) -> list[dict[str, Any]]:
     }
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen_with_cert_fallback(req, timeout=15) as resp:
             html = resp.read().decode("utf-8", errors="replace")
     except Exception as exc:
         log.error("Bing 搜索失败: %s", exc)
@@ -405,7 +488,7 @@ def _search_via_baidu(keyword: str, max_results: int) -> list[dict[str, Any]]:
     }
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen_with_cert_fallback(req, timeout=15) as resp:
             html = resp.read().decode("utf-8", errors="replace")
     except Exception as exc:
         log.error("百度搜索失败: %s", exc)
@@ -504,7 +587,15 @@ def search(
     log.info("知乎搜索: '%s' (max=%d)", keyword, max_results)
 
     # 路径 1：API 搜索（需认证）
-    candidates = search_via_api(keyword, cookie=cookie, token=token, max_results=max_results)
+    api_error: SearchError | None = None
+    try:
+        candidates = search_via_api(keyword, cookie=cookie, token=token, max_results=max_results)
+    except SearchError as exc:
+        if exc.code == "AUTH_REQUIRED":
+            raise
+        api_error = exc
+        log.warning("知乎 API 路径失败，继续降级搜索: %s", exc)
+        candidates = []
     if candidates:
         return candidates
 
@@ -517,6 +608,8 @@ def search(
     # 路径 3：搜索引擎兜底（Bing site:zhihu.com）
     log.info("页面抓取失败，降级搜索引擎兜底...")
     candidates = search_via_websearch(keyword, max_results=max_results)
+    if not candidates and api_error:
+        raise api_error
     return candidates
 
 
